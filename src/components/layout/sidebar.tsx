@@ -1,0 +1,165 @@
+"use client";
+
+import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  Receipt,
+  PlusCircle,
+  PieChart,
+  Tags,
+  CalendarSync,
+  FileSpreadsheet,
+  Wallet,
+  ShieldCheck,
+  Server,
+  FlaskConical,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/auth-context";
+
+const navItems = [
+  { href: "/", label: "ภาพรวม", icon: LayoutDashboard },
+  { href: "/transactions", label: "ธุรกรรม", icon: Receipt },
+  { href: "/transactions/new", label: "เพิ่มรายการ", icon: PlusCircle, isHighlight: true },
+  { href: "/budgets", label: "งบประมาณ", icon: PieChart },
+  { href: "/categories", label: "หมวดหมู่", icon: Tags },
+  { href: "/recurring", label: "รายการประจำ", icon: CalendarSync },
+  { href: "/reports", label: "รายงาน & ส่งออก", icon: FileSpreadsheet },
+  { href: "/debug/ocr", label: "Debug OCR", icon: FlaskConical },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const { uid, loading } = useAuth();
+  const isEmulator = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "true";
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex flex-col w-64 border-r border-slate-200 bg-white h-screen sticky top-0 p-5 shadow-xs select-none">
+        {/* Brand */}
+        <div className="flex items-center gap-3 px-2 py-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+            <Wallet className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="font-bold text-base text-slate-900 tracking-tight leading-none">
+              รายจ่าย - Laijai
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">Expense Tracker AI</p>
+          </div>
+        </div>
+
+        {/* Quick Add Button */}
+        <Link
+          href="/transactions/new"
+          className="flex items-center justify-center gap-2 w-full py-2.5 px-4 mb-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all shadow-sm shadow-blue-600/30 hover:shadow-md hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <PlusCircle className="w-4 h-4" />
+          <span>บันทึกรายจ่าย</span>
+        </Link>
+
+        {/* Navigation Items */}
+        <nav className="flex-1 space-y-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+
+            if (item.isHighlight) return null; // We already have the top CTA button
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-blue-50 text-blue-700 font-semibold"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                <Icon
+                  className={cn(
+                    "w-5 h-5",
+                    isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
+                  )}
+                />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Footer / Auth & Connection info */}
+        <div className="pt-4 border-t border-slate-100 space-y-2 text-xs">
+          <div className="flex items-center justify-between text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+            <div className="flex items-center gap-1.5">
+              <Server className="w-3.5 h-3.5 text-blue-500" />
+              <span>โหมดฐานข้อมูล:</span>
+            </div>
+            <span
+              className={cn(
+                "px-2 py-0.5 rounded-full font-medium text-[11px]",
+                isEmulator
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-emerald-100 text-emerald-800"
+              )}
+            >
+              {isEmulator ? "Local Emulator" : "Firebase Cloud"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 px-1 text-slate-400">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            <span className="truncate">
+              UID: {loading ? "กำลังโหลด..." : uid ? `${uid.slice(0, 10)}...` : "ยังไม่ระบุ"}
+            </span>
+          </div>
+        </div>
+      </aside>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex items-center justify-around shadow-lg">
+        {navItems
+          .filter((i) => i.href !== "/reports" && i.href !== "/categories")
+          .map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+
+            if (item.isHighlight) {
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex flex-col items-center justify-center -mt-5"
+                >
+                  <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30">
+                    <PlusCircle className="w-6 h-6" />
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-600 mt-0.5">เพิ่ม</span>
+                </Link>
+              );
+            }
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex flex-col items-center justify-center py-1 px-2 rounded-lg text-xs font-medium transition-colors",
+                  isActive ? "text-blue-600 font-semibold" : "text-slate-500 hover:text-slate-800"
+                )}
+              >
+                <Icon className={cn("w-5 h-5", isActive ? "text-blue-600" : "text-slate-400")} />
+                <span className="text-[10px] mt-1">{item.label}</span>
+              </Link>
+            );
+          })}
+      </nav>
+    </>
+  );
+}
