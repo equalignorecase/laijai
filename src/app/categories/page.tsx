@@ -9,6 +9,7 @@ import {
   deleteCategory,
 } from "@/services/category-service";
 import { CategoryIcon } from "@/components/ui/category-icon";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import {
   Tags,
   PlusCircle,
@@ -17,6 +18,7 @@ import {
   Trash2,
   X,
   Check,
+  AlertCircle,
 } from "lucide-react";
 
 const AVAILABLE_ICONS = [
@@ -63,17 +65,40 @@ export default function CategoriesPage() {
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const type = "expense";
   const [icon, setIcon] = useState("ShoppingBag");
   const [color, setColor] = useState("#3B82F6");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Delete Confirm Modal State
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState<{
+    type: "error" | "success";
+    message: string;
+  } | null>(null);
+
   const displayedCategories = categories.filter((c) => c.type === "expense");
 
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uid || !name.trim()) return;
+    if (!name.trim()) {
+      setNameError("กรุณากรอกชื่อหมวดหมู่");
+      return;
+    }
+    if (!uid) return;
+
+    // Check duplicate name
+    const exists = categories.some(
+      (c) => c.type === type && c.name.toLowerCase() === name.trim().toLowerCase()
+    );
+    if (exists) {
+      setNameError("มีหมวดหมู่นี้อยู่แล้ว กรุณาใช้ชื่ออื่น");
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -87,6 +112,11 @@ export default function CategoriesPage() {
       await refreshCategories();
       setShowModal(false);
       setName("");
+      setNameError(null);
+      setFeedbackNotice({
+        type: "success",
+        message: `เพิ่มหมวดหมู่ "${name.trim()}" เรียบร้อยแล้ว`,
+      });
     } catch (err) {
       console.error("Create category error:", err);
       setErrorMessage("เกิดข้อผิดพลาดในการสร้างหมวดหมู่");
@@ -100,31 +130,77 @@ export default function CategoriesPage() {
     try {
       await updateCategory(uid, cat.id, { isArchived: !cat.isArchived });
       await refreshCategories();
+      setFeedbackNotice({
+        type: "success",
+        message: cat.isArchived
+          ? `เปิดใช้งานหมวดหมู่ "${cat.name}" อีกครั้งแล้ว`
+          : `ซ่อนหมวดหมู่ "${cat.name}" เรียบร้อยแล้ว`,
+      });
     } catch (err) {
       console.error("Archive category error:", err);
-      alert("ไม่สามารถเปลี่ยนสถานะหมวดหมู่ได้");
+      setFeedbackNotice({
+        type: "error",
+        message: "ไม่สามารถเปลี่ยนสถานะหมวดหมู่ได้",
+      });
     }
   };
 
-  const handleDelete = async (cat: Category) => {
-    if (!confirm(`คุณต้องการลบหมวดหมู่ "${cat.name}" ใช่หรือไม่?`)) return;
-    if (!uid) return;
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !uid) return;
+    setIsDeleting(true);
 
     try {
-      const res = await deleteCategory(uid, cat.id);
+      const res = await deleteCategory(uid, deleteTarget.id);
       if (!res.success) {
-        alert(res.error);
+        setFeedbackNotice({
+          type: "error",
+          message: res.error || "ไม่สามารถลบหมวดหมู่นี้ได้",
+        });
+        setDeleteTarget(null);
         return;
       }
       await refreshCategories();
+      setFeedbackNotice({
+        type: "success",
+        message: `ลบหมวดหมู่ "${deleteTarget.name}" เรียบร้อยแล้ว`,
+      });
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Delete category error:", err);
-      alert("เกิดข้อผิดพลาดในการลบหมวดหมู่");
+      setFeedbackNotice({
+        type: "error",
+        message: "เกิดข้อผิดพลาดในการลบหมวดหมู่",
+      });
+      setDeleteTarget(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="space-y-6">
+      {/* Feedback Banner */}
+      {feedbackNotice && (
+        <div
+          className={`px-4 py-3 rounded-2xl flex items-center justify-between text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200 ${
+            feedbackNotice.type === "error"
+              ? "bg-rose-50 text-rose-700 border border-rose-200"
+              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{feedbackNotice.message}</span>
+          </div>
+          <button
+            onClick={() => setFeedbackNotice(null)}
+            className="p-1 hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -135,8 +211,13 @@ export default function CategoriesPage() {
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all"
+          onClick={() => {
+            setName("");
+            setNameError(null);
+            setErrorMessage(null);
+            setShowModal(true);
+          }}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
         >
           <PlusCircle className="w-4 h-4" />
           <span>เพิ่มหมวดหมู่ใหม่</span>
@@ -160,7 +241,7 @@ export default function CategoriesPage() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => handleToggleArchive(cat)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
                   title={cat.isArchived ? "เปิดใช้งานใหม่" : "ซ่อนหมวดหมู่"}
                 >
                   {cat.isArchived ? (
@@ -170,8 +251,8 @@ export default function CategoriesPage() {
                   )}
                 </button>
                 <button
-                  onClick={() => handleDelete(cat)}
-                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
+                  onClick={() => setDeleteTarget(cat)}
+                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
                   title="ลบหมวดหมู่"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -204,7 +285,7 @@ export default function CategoriesPage() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 relative">
             <button
               onClick={() => setShowModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -219,12 +300,24 @@ export default function CategoriesPage() {
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder="เช่น ค่ากาแฟ, ช้อปปิ้งออนไลน์, ของใช้สัตว์เลี้ยง"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-500"
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (nameError) setNameError(null);
+                  }}
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm text-slate-900 transition-colors focus:bg-white focus:outline-none ${
+                    nameError
+                      ? "border-2 border-rose-400 bg-rose-50/30 focus:border-rose-500"
+                      : "border border-slate-200 bg-slate-50 focus:border-blue-500"
+                  }`}
                 />
+                {nameError && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1.5 flex items-center gap-1 animate-in fade-in">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>{nameError}</span>
+                  </p>
+                )}
               </div>
 
               {/* Color picker */}
@@ -238,7 +331,7 @@ export default function CategoriesPage() {
                       key={c}
                       type="button"
                       onClick={() => setColor(c)}
-                      className="w-7 h-7 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                      className="w-7 h-7 rounded-full flex items-center justify-center transition-transform hover:scale-110 cursor-pointer"
                       style={{ backgroundColor: c }}
                     >
                       {color === c && <Check className="w-4 h-4 text-white" />}
@@ -258,7 +351,7 @@ export default function CategoriesPage() {
                       key={ic}
                       type="button"
                       onClick={() => setIcon(ic)}
-                      className={`p-2 rounded-lg flex items-center justify-center transition-colors ${
+                      className={`p-2 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
                         icon === ic ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-200"
                       }`}
                     >
@@ -269,8 +362,9 @@ export default function CategoriesPage() {
               </div>
 
               {errorMessage && (
-                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700">
-                  {errorMessage}
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMessage}</span>
                 </div>
               )}
 
@@ -278,14 +372,14 @@ export default function CategoriesPage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs disabled:opacity-50"
+                  className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting ? "กำลังสร้าง..." : "สร้างหมวดหมู่"}
                 </button>
@@ -294,6 +388,19 @@ export default function CategoriesPage() {
           </div>
         </div>
       )}
+
+      {/* Custom Delete Modal */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="ยืนยันการลบหมวดหมู่"
+        description={`คุณต้องการลบหมวดหมู่ "${deleteTarget?.name}" ใช่หรือไม่? หากมีรายการหรือธุรกรรมที่ใช้หมวดหมู่นี้อยู่ ระบบจะไม่อนุญาตให้ลบ`}
+        confirmText="ลบหมวดหมู่"
+        cancelText="ยกเลิก"
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

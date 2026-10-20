@@ -45,10 +45,16 @@ export interface Category {
   updatedAt: string;
 }
 
+export type BudgetPeriodType = "monthly" | "custom";
+
 export interface Budget {
   id: string;
-  categoryId: string;
-  month: string; // YYYY-MM
+  name?: string; // Optional custom label, e.g. "ทริปเชียงใหม่"
+  periodType?: BudgetPeriodType; // defaults to "monthly" if omitted
+  categoryId: string; // Specific category ID or "all" for all categories
+  month?: string; // YYYY-MM (for monthly)
+  startDate?: string; // YYYY-MM-DD (for custom)
+  endDate?: string; // YYYY-MM-DD (for custom)
   amount: number;
   createdAt: string;
   updatedAt: string;

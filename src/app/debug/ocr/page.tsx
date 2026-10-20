@@ -333,8 +333,7 @@ export default function OcrDebugPage() {
       setTesseractTimeMs(Math.round(endTime - startTime));
       setTesseractResult(result);
     } catch (err: unknown) {
-      console.error(err);
-      alert(`Tesseract Error: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Tesseract Error:", err);
     } finally {
       setIsTesseractRunning(false);
     }

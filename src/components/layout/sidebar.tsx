@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   Server,
   FlaskConical,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
@@ -33,7 +35,16 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { uid, loading } = useAuth();
+  const [copied, setCopied] = useState(false);
   const isEmulator = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "true";
+
+  const handleCopyUid = () => {
+    if (uid) {
+      navigator.clipboard.writeText(uid);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <>
@@ -95,28 +106,58 @@ export function Sidebar() {
 
         {/* Footer / Auth & Connection info */}
         <div className="pt-4 border-t border-slate-100 space-y-2 text-xs">
-          <div className="flex items-center justify-between text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-            <div className="flex items-center gap-1.5">
-              <Server className="w-3.5 h-3.5 text-blue-500" />
-              <span>โหมดฐานข้อมูล:</span>
+          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 space-y-2">
+            <div className="flex items-center justify-between text-slate-500">
+              <div className="flex items-center gap-1.5">
+                <Server className="w-3.5 h-3.5 text-blue-500" />
+                <span>ฐานข้อมูล:</span>
+              </div>
+              <span
+                className={cn(
+                  "px-2 py-0.5 rounded-full font-medium text-[11px]",
+                  isEmulator
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-emerald-100 text-emerald-800"
+                )}
+              >
+                {isEmulator ? "Local Emulator" : "Firebase Cloud"}
+              </span>
             </div>
-            <span
-              className={cn(
-                "px-2 py-0.5 rounded-full font-medium text-[11px]",
-                isEmulator
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-emerald-100 text-emerald-800"
-              )}
-            >
-              {isEmulator ? "Local Emulator" : "Firebase Cloud"}
-            </span>
-          </div>
 
-          <div className="flex items-center gap-2 px-1 text-slate-400">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            <span className="truncate">
-              UID: {loading ? "กำลังโหลด..." : uid ? `${uid.slice(0, 10)}...` : "ยังไม่ระบุ"}
-            </span>
+            <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1.5 border-t border-slate-200/60">
+              <div className="flex items-center gap-1.5 truncate">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span className="font-mono truncate">
+                  {loading ? "กำลังโหลด..." : uid ? `${uid.slice(0, 8)}...` : "ยังไม่ระบุ"}
+                </span>
+              </div>
+              {uid && (
+                <button
+                  type="button"
+                  onClick={handleCopyUid}
+                  title="คลิกเพื่อคัดลอก UID ไปค้นหาใน Firestore"
+                  className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700 bg-white hover:bg-blue-50 px-2 py-0.5 rounded border border-slate-200 transition-colors cursor-pointer shrink-0"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span className="text-emerald-600 font-semibold">คัดลอกแล้ว</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>คัดลอก UID</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {uid && (
+              <p className="text-[10px] text-slate-400 font-mono break-all leading-tight">
+                ที่อยู่: users/{uid.slice(0, 6)}.../transactions
+              </p>
+            )}
           </div>
         </div>
       </aside>

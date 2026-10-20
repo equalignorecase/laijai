@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/auth-context";
 import { Transaction } from "@/types";
@@ -12,27 +12,31 @@ import { CategoryIcon } from "@/components/ui/category-icon";
 import {
   formatCurrency,
   formatThaiDate,
-  getCurrentYearMonth,
-  formatThaiMonth,
+  getCurrentDateStr,
 } from "@/lib/utils";
 import {
   PlusCircle,
   Search,
   Trash2,
-  Sparkles,
   FileSpreadsheet,
   ChevronLeft,
   ChevronRight,
   Receipt,
+  Calendar,
 } from "lucide-react";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
+
+type RangePreset = "all" | "30days" | "7days" | "this_month" | "custom";
 
 export default function TransactionsPage() {
   const { uid, categories } = useAuth();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters
-  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  // Range and filter states
+  const [rangePreset, setRangePreset] = useState<RangePreset>("all");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "amount_desc" | "amount_asc">("date_desc");
@@ -41,16 +45,66 @@ export default function TransactionsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
-  const categoryMap = new Map(categories.map((c) => [c.id, c]));
+  // Confirm delete modal state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+
+  // Check URL query param ?month= or ?preset=
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const m = params.get("month");
+      if (m) {
+        setStartDate(`${m}-01`);
+        setEndDate(`${m}-31`);
+        setRangePreset("custom");
+      }
+    }
+  }, []);
+
+  const computePresetRange = (preset: RangePreset): { start: string; end: string } => {
+    const today = getCurrentDateStr();
+    const todayDate = new Date(today);
+
+    if (preset === "7days") {
+      const past7 = new Date(todayDate);
+      past7.setDate(past7.getDate() - 6);
+      return { start: past7.toISOString().split("T")[0], end: today };
+    }
+    if (preset === "30days") {
+      const past30 = new Date(todayDate);
+      past30.setDate(past30.getDate() - 29);
+      return { start: past30.toISOString().split("T")[0], end: today };
+    }
+    if (preset === "this_month") {
+      const [year, month] = today.split("-").map(Number);
+      const first = `${year}-${String(month).padStart(2, "0")}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const last = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      return { start: first, end: last };
+    }
+    return { start: "", end: "" };
+  };
+
+  const handleSelectPreset = (preset: RangePreset) => {
+    setRangePreset(preset);
+    setCurrentPage(1);
+    if (preset !== "custom") {
+      const { start, end } = computePresetRange(preset);
+      setStartDate(start);
+      setEndDate(end);
+    }
+  };
 
   const loadData = async () => {
     if (!uid) return;
     setLoading(true);
     try {
-      const list = await getTransactions(uid, {
-        month: selectedMonth,
-      });
-      setTransactions(list.filter((t) => t.type === "expense"));
+      const list = await getTransactions(uid);
+      const expenses = list.filter((t) => t.type === "expense");
+      setAllTransactions(expenses);
     } catch (err) {
       console.error("Failed to load transactions:", err);
     } finally {
@@ -59,104 +113,199 @@ export default function TransactionsPage() {
   };
 
   useEffect(() => {
-    if (!selectedMonth) {
-      setSelectedMonth(getCurrentYearMonth());
-      return;
-    }
     loadData();
-  }, [uid, selectedMonth]);
+  }, [uid]);
 
-  const handleDelete = async (id: string, title: string) => {
-    if (!confirm(`คุณต้องการลบรายการ "${title}" ใช่หรือไม่?`)) return;
-    if (!uid) return;
+  useEffect(() => {
+    const handleFocus = () => {
+      if (uid) {
+        loadData();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [uid]);
 
+  const handleDelete = (id: string, title: string) => {
+    setDeleteTarget({ id, title });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!uid || !deleteTarget) return;
+    setIsDeleting(true);
     try {
-      await deleteTransaction(uid, id);
-      setTransactions((prev) => prev.filter((t) => t.id !== id));
+      await deleteTransaction(uid, deleteTarget.id);
+      setAllTransactions((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Failed to delete transaction:", err);
-      alert("ไม่สามารถลบรายการได้");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
+  // Filter transactions by date range
+  const dateFiltered = useMemo(() => {
+    return allTransactions.filter((tx) => {
+      const txDate = (tx.transactionDate || "").slice(0, 10);
+      if (startDate && txDate && txDate < startDate) return false;
+      if (endDate && txDate && txDate > endDate) return false;
+      return true;
+    });
+  }, [allTransactions, startDate, endDate]);
+
   // Filter and Search logic
-  const filteredList = transactions.filter((tx) => {
-    if (filterCategory !== "all" && tx.categoryId !== filterCategory) return false;
-    if (searchQuery.trim() !== "") {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = tx.title.toLowerCase().includes(q);
-      const matchRecipient = tx.recipientName?.toLowerCase().includes(q);
-      const matchDesc = tx.description?.toLowerCase().includes(q);
-      const matchRef = tx.referenceNumber?.toLowerCase().includes(q);
-      if (!matchTitle && !matchRecipient && !matchDesc && !matchRef) return false;
-    }
-    return true;
-  });
+  const filteredList = useMemo(() => {
+    return dateFiltered.filter((tx) => {
+      if (filterCategory !== "all" && tx.categoryId !== filterCategory) return false;
+      if (searchQuery.trim() !== "") {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = tx.title.toLowerCase().includes(q);
+        const matchRecipient = tx.recipientName?.toLowerCase().includes(q);
+        const matchDesc = tx.description?.toLowerCase().includes(q);
+        const matchRef = tx.referenceNumber?.toLowerCase().includes(q);
+        if (!matchTitle && !matchRecipient && !matchDesc && !matchRef) return false;
+      }
+      return true;
+    });
+  }, [dateFiltered, filterCategory, searchQuery]);
 
   // Sort logic
-  const sortedList = [...filteredList].sort((a, b) => {
-    if (sortBy === "date_desc") return b.transactionDate.localeCompare(a.transactionDate);
-    if (sortBy === "date_asc") return a.transactionDate.localeCompare(b.transactionDate);
-    if (sortBy === "amount_desc") return b.amount - a.amount;
-    if (sortBy === "amount_asc") return a.amount - b.amount;
-    return 0;
-  });
+  const sortedList = useMemo(() => {
+    return [...filteredList].sort((a, b) => {
+      if (sortBy === "date_desc") return (b.transactionDate || "").localeCompare(a.transactionDate || "");
+      if (sortBy === "date_asc") return (a.transactionDate || "").localeCompare(b.transactionDate || "");
+      if (sortBy === "amount_desc") return b.amount - a.amount;
+      if (sortBy === "amount_asc") return a.amount - b.amount;
+      return 0;
+    });
+  }, [filteredList, sortBy]);
 
-  // Pagination slice
+  // Pagination logic
   const totalPages = Math.ceil(sortedList.length / itemsPerPage) || 1;
   const paginatedList = sortedList.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
+  const totalExpense = filteredList.reduce((sum, tx) => sum + tx.amount, 0);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto pb-16">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">รายการธุรกรรม</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            ค้นหา ตรวจสอบ และจัดการประวัติรายรับ-รายจ่ายของคุณ
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">รายการรายจ่าย</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            ค้นหา ตรวจสอบ และจัดการประวัติรายจ่ายตามช่วงวันที่ต้องการ
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Link
             href="/reports"
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-all"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
             <span>ส่งออกรายงาน</span>
           </Link>
+
           <Link
             href="/transactions/new"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all shadow-blue-600/20"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>เพิ่มรายการใหม่</span>
+            <span>+ เพิ่มรายการใหม่</span>
           </Link>
         </div>
       </div>
 
-      {/* Filter & Search Bar Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Month selector */}
-          <div className="relative">
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-              เดือนที่แสดง
-            </label>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => {
-                setSelectedMonth(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium focus:bg-white focus:border-blue-500"
-            />
+      {/* Filter Toolbar Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+        {/* Preset Chips */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-medium text-slate-500 mr-1">ช่วงวัน:</span>
+            <button
+              onClick={() => handleSelectPreset("all")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rangePreset === "all"
+                  ? "bg-blue-600 text-white shadow-2xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              ทั้งหมด ({allTransactions.length})
+            </button>
+            <button
+              onClick={() => handleSelectPreset("30days")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rangePreset === "30days"
+                  ? "bg-blue-600 text-white shadow-2xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              30 วันล่าสุด
+            </button>
+            <button
+              onClick={() => handleSelectPreset("7days")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rangePreset === "7days"
+                  ? "bg-blue-600 text-white shadow-2xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              7 วันล่าสุด
+            </button>
+            <button
+              onClick={() => handleSelectPreset("this_month")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rangePreset === "this_month"
+                  ? "bg-blue-600 text-white shadow-2xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              เดือนนี้
+            </button>
+            <button
+              onClick={() => setRangePreset("custom")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rangePreset === "custom"
+                  ? "bg-blue-600 text-white shadow-2xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              กำหนดเอง ➔
+            </button>
           </div>
 
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400">จาก</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setRangePreset("custom");
+                setCurrentPage(1);
+              }}
+              className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-white focus:outline-hidden"
+            />
+            <span className="text-[11px] text-slate-400">ถึง</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setRangePreset("custom");
+                setCurrentPage(1);
+              }}
+              className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-white focus:outline-hidden"
+            />
+          </div>
+        </div>
+
+        {/* Search, Category & Sorting */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Search box */}
           <div className="relative">
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">
@@ -172,7 +321,7 @@ export default function TransactionsPage() {
                   setSearchQuery(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500"
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-hidden"
               />
             </div>
           </div>
@@ -188,7 +337,7 @@ export default function TransactionsPage() {
                 setFilterCategory(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-hidden"
             >
               <option value="all">ทุกหมวดหมู่</option>
               {categories.map((c) => (
@@ -198,19 +347,17 @@ export default function TransactionsPage() {
               ))}
             </select>
           </div>
-        </div>
 
-        {/* Sort order options */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
-          <span>พบ {sortedList.length} รายการ</span>
-
-          <div className="flex items-center gap-2">
-            <span>เรียงตาม:</span>
+          {/* Sort By */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+              เรียงลำดับ
+            </label>
             <select
               value={sortBy}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="bg-transparent font-medium text-slate-700 hover:text-blue-600 focus:outline-hidden"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-hidden"
             >
               <option value="date_desc">วันที่ (ล่าสุดก่อน)</option>
               <option value="date_asc">วันที่ (เก่าสุดก่อน)</option>
@@ -219,170 +366,171 @@ export default function TransactionsPage() {
             </select>
           </div>
         </div>
+
+        {/* Summary info */}
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
+          <span>
+            พบ <strong>{filteredList.length}</strong> รายการ
+            {startDate && endDate && (
+              <span className="text-slate-400 ml-1">
+                ({formatThaiDate(startDate)} – {formatThaiDate(endDate)})
+              </span>
+            )}
+          </span>
+          <span>
+            รวมยอดใช้จ่าย:{" "}
+            <strong className="text-slate-900 font-bold text-sm">
+              {formatCurrency(totalExpense)}
+            </strong>
+          </span>
+        </div>
       </div>
 
       {/* Transaction Table / List */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-sm text-slate-400">กำลังโหลดรายการ...</div>
+          <div className="p-14 text-center text-xs text-slate-400">กำลังโหลดรายการ...</div>
         ) : sortedList.length === 0 ? (
-          <div className="p-12 text-center space-y-3">
+          <div className="p-14 text-center space-y-3">
             <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
               <Receipt className="w-6 h-6" />
             </div>
             <div>
-              <p className="font-semibold text-slate-800">ยังไม่มีรายการในเดือนนี้</p>
+              <p className="font-semibold text-slate-800 text-base">ไม่พบรายการรายจ่ายในช่วงที่เลือก</p>
               <p className="text-xs text-slate-400 mt-1">
-                คุณสามารถเพิ่มรายการด้วยตนเอง หรืออัปโหลดสลิปธนาคารให้ AI อ่านได้
+                ลองกดปุ่ม &quot;ทั้งหมด (All Time)&quot; หรือเลือกช่วงวันที่ครอบคลุมรายการของคุณ
               </p>
             </div>
-            <Link
-              href="/transactions/new"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold shadow-xs hover:bg-blue-700 transition-colors"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>เพิ่มรายการแรก</span>
-            </Link>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                onClick={() => handleSelectPreset("all")}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                ดูทั้งหมด ({allTransactions.length} รายการ)
+              </button>
+              <Link
+                href="/transactions/new"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold shadow-xs hover:bg-blue-700 transition-colors"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>+ เพิ่มรายการใหม่</span>
+              </Link>
+            </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/75 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
-                <tr>
-                  <th className="py-3 px-4">วันที่ / เวลา</th>
-                  <th className="py-3 px-4">รายการ & หมวดหมู่</th>
-                  <th className="py-3 px-4">ผู้รับ / ผู้โอน / เลขอ้างอิง</th>
-                  <th className="py-3 px-4 text-right">จำนวนเงิน</th>
-                  <th className="py-3 px-4 text-center">ที่มา</th>
-                  <th className="py-3 px-4 text-center">จัดการ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paginatedList.map((tx) => {
-                  const cat = categoryMap.get(tx.categoryId);
-                  const isIncome = tx.type === "income";
+          <div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold">
+                  <tr>
+                    <th className="py-3 px-4">วันที่ / เวลา</th>
+                    <th className="py-3 px-4">รายการ</th>
+                    <th className="py-3 px-4">หมวดหมู่</th>
+                    <th className="py-3 px-4">ผู้รับ / ร้านค้า</th>
+                    <th className="py-3 px-4 text-right">จำนวนเงิน</th>
+                    <th className="py-3 px-4 text-center">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedList.map((tx) => {
+                    const cat = categoryMap.get(tx.categoryId);
+                    return (
+                      <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
+                          <div className="font-medium text-slate-900">
+                            {formatThaiDate(tx.transactionDate, "d MMM yyyy")}
+                          </div>
+                          {tx.transactionTime && (
+                            <div className="text-[11px] text-slate-400">{tx.transactionTime} น.</div>
+                          )}
+                        </td>
 
-                  return (
-                    <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group">
-                      {/* Date & Time */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-medium text-slate-800 block">
-                          {formatThaiDate(tx.transactionDate, "d MMM yyyy")}
-                        </span>
-                        <span className="text-slate-400 text-[11px]">
-                          {tx.transactionTime || "-"}
-                        </span>
-                      </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-slate-900">{tx.title}</div>
+                          {tx.referenceNumber && (
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              Ref: {tx.referenceNumber}
+                            </div>
+                          )}
+                        </td>
 
-                      {/* Title & Category */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <CategoryIcon
-                            name={cat?.icon || "CircleDot"}
-                            color={cat?.color || "#64748B"}
-                            size={16}
-                            className="p-2"
-                          />
-                          <div>
-                            <span className="font-semibold text-slate-900 block">
-                              {tx.title}
-                            </span>
-                            <span className="text-slate-400 text-[11px]">
-                              {cat?.name || "ไม่ระบุหมวดหมู่"}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5">
+                            <CategoryIcon
+                              name={cat?.icon || "CircleDot"}
+                              color={cat?.color || "#3B82F6"}
+                              size={16}
+                            />
+                            <span className="font-medium text-slate-700">
+                              {cat?.name || "ไม่ระบุ"}
                             </span>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Recipient & Ref */}
-                      <td className="py-3.5 px-4 text-slate-600">
-                        {tx.recipientName ? (
-                          <span className="font-medium text-slate-800 block">
-                            {tx.recipientName}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 block">-</span>
-                        )}
-                        {tx.referenceNumber && (
-                          <span className="font-mono text-[10px] text-blue-600 block">
-                            Ref: {tx.referenceNumber}
-                          </span>
-                        )}
-                      </td>
+                        <td className="py-3.5 px-4 text-slate-600">
+                          {tx.recipientName || tx.merchantName || "-"}
+                        </td>
 
-                      {/* Amount */}
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <span
-                          className={`font-bold text-sm ${
-                            isIncome ? "text-emerald-600" : "text-slate-900"
-                          }`}
-                        >
-                          {isIncome ? "+" : "-"}
-                          {formatCurrency(tx.amount)}
-                        </span>
-                      </td>
+                        <td className="py-3.5 px-4 text-right font-bold text-slate-900 whitespace-nowrap">
+                          -{formatCurrency(tx.amount)}
+                        </td>
 
-                      {/* Source & Duplicate badge */}
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        {tx.source === "receipt_ai" ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                            <Sparkles className="w-3 h-3 text-blue-500" />
-                            <span>AI OCR</span>
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-[11px]">บันทึกเอง</span>
-                        )}
-
-                        {tx.duplicateStatus === "possible_duplicate" && (
-                          <span className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                            อาจซ้ำ
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleDelete(tx.id, tx.title)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="ลบรายการ"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs text-slate-600">
-            <span>
-              หน้า {currentPage} จาก {totalPages}
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            onClick={() => handleDelete(tx.id, tx.title)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="ลบรายการ"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between p-4 border-t border-slate-100 text-xs text-slate-500">
+                <span>
+                  หน้า {currentPage} จาก {totalPages}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => p - 1)}
+                    className="p-1.5 rounded-lg border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => p + 1)}
+                    className="p-1.5 rounded-lg border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Custom Confirmation Modal for Deleting Transaction */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="ยืนยันการลบรายการ"
+        description={`คุณต้องการลบรายการ "${deleteTarget?.title}" ใช่หรือไม่? ข้อมูลนี้จะถูกลบถาวร`}
+        confirmText="ลบรายการ"
+        cancelText="ยกเลิก"
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

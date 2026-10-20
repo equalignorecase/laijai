@@ -11,6 +11,7 @@ import {
   executeRecurringTransaction,
 } from "@/services/recurring-service";
 import { CategoryIcon } from "@/components/ui/category-icon";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import {
   formatCurrency,
   formatThaiDate,
@@ -45,6 +46,24 @@ export default function RecurringPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [todayStr, setTodayStr] = useState("");
 
+  // Inline Validation & Feedback state
+  const [fieldErrors, setFieldErrors] = useState<{
+    title?: string;
+    amount?: string;
+    categoryId?: string;
+    general?: string;
+  }>({});
+  const [feedbackNotice, setFeedbackNotice] = useState<{
+    type: "error" | "success";
+    message: string;
+  } | null>(null);
+
+  // Modal targets for confirmation
+  const [deleteTarget, setDeleteTarget] = useState<RecurringTransaction | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [executeTarget, setExecuteTarget] = useState<RecurringTransaction | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+
   const categoryMap = new Map(categories.map((c) => [c.id, c]));
 
   const loadData = async () => {
@@ -68,20 +87,44 @@ export default function RecurringPage() {
     loadData();
   }, [uid]);
 
+  const handleOpenModal = () => {
+    setTitle("");
+    setAmount("");
+    const defaultCat = categories.find((c) => c.type === type && !c.isArchived);
+    setCategoryId(defaultCat ? defaultCat.id : "");
+    setFrequency("monthly");
+    setStartDate(todayStr || getCurrentDateStr());
+    setEndDate("");
+    setFieldErrors({});
+    setShowModal(true);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uid || !title.trim()) return;
+    if (!uid) return;
+
+    const errors: typeof fieldErrors = {};
+    if (!title.trim()) {
+      errors.title = "กรุณากรอกชื่อรายการประจำ";
+    }
+
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) {
-      alert("กรุณากรอกจำนวนเงินให้ถูกต้อง");
-      return;
+      errors.amount = "กรุณากรอกจำนวนเงินให้ถูกต้อง (มากกว่า 0)";
     }
+
     if (!categoryId) {
-      alert("กรุณาเลือกหมวดหมู่");
+      errors.categoryId = "กรุณาเลือกหมวดหมู่";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
     setIsSubmitting(true);
+    setFieldErrors({});
+
     try {
       await addRecurringTransaction(uid, {
         title: title.trim(),
@@ -98,10 +141,14 @@ export default function RecurringPage() {
       setShowModal(false);
       setTitle("");
       setAmount("");
+      setFeedbackNotice({
+        type: "success",
+        message: `สร้างรายการประจำ "${title.trim()}" สำเร็จ`,
+      });
       await loadData();
     } catch (err) {
       console.error("Create recurring error:", err);
-      alert("เกิดข้อผิดพลาดในการสร้างรายการประจำ");
+      setFieldErrors({ general: "เกิดข้อผิดพลาดในการสร้างรายการประจำ" });
     } finally {
       setIsSubmitting(false);
     }
@@ -112,43 +159,91 @@ export default function RecurringPage() {
     try {
       await updateRecurringTransaction(uid, item.id, { isActive: !item.isActive });
       await loadData();
+      setFeedbackNotice({
+        type: "success",
+        message: item.isActive
+          ? `หยุดรายการ "${item.title}" ชั่วคราวแล้ว`
+          : `เปิดใช้งานรายการ "${item.title}" เรียบร้อยแล้ว`,
+      });
     } catch (err) {
       console.error("Toggle recurring active error:", err);
+      setFeedbackNotice({
+        type: "error",
+        message: "ไม่สามารถเปลี่ยนสถานะรายการได้",
+      });
     }
   };
 
-  const handleDelete = async (item: RecurringTransaction) => {
-    if (!confirm(`คุณต้องการลบรายการประจำ "${item.title}" ใช่หรือไม่?`)) return;
-    if (!uid) return;
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !uid) return;
+    setIsDeleting(true);
     try {
-      await deleteRecurringTransaction(uid, item.id);
-      setRecurringList((prev) => prev.filter((r) => r.id !== item.id));
+      await deleteRecurringTransaction(uid, deleteTarget.id);
+      setRecurringList((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      setFeedbackNotice({
+        type: "success",
+        message: `ลบรายการ "${deleteTarget.title}" สำเร็จ`,
+      });
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Delete recurring error:", err);
+      setFeedbackNotice({
+        type: "error",
+        message: "เกิดข้อผิดพลาดในการลบรายการ",
+      });
+      setDeleteTarget(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  const handleExecuteNow = async (item: RecurringTransaction) => {
-    if (!uid) return;
-    if (
-      !confirm(
-        `ยืนยันการบันทึก "${item.title}" จำนวน ${formatCurrency(item.amount)} เป็นธุรกรรมจริงของรอบวันที่ ${formatThaiDate(item.nextDueDate)} หรือไม่?`
-      )
-    )
-      return;
-
+  const handleConfirmExecute = async () => {
+    if (!executeTarget || !uid) return;
+    setIsExecuting(true);
     try {
-      await executeRecurringTransaction(uid, item);
-      alert("บันทึกเป็นธุรกรรมจริงเรียบร้อยแล้ว!");
+      await executeRecurringTransaction(uid, executeTarget);
+      setFeedbackNotice({
+        type: "success",
+        message: `บันทึกรายการ "${executeTarget.title}" (${formatCurrency(executeTarget.amount)}) เป็นธุรกรรมจริงแล้ว!`,
+      });
+      setExecuteTarget(null);
       await loadData();
     } catch (err) {
       console.error("Execute recurring error:", err);
-      alert("เกิดข้อผิดพลาดในการบันทึกธุรกรรม");
+      setFeedbackNotice({
+        type: "error",
+        message: "เกิดข้อผิดพลาดในการบันทึกธุรกรรม",
+      });
+      setExecuteTarget(null);
+    } finally {
+      setIsExecuting(false);
     }
   };
 
   return (
     <div className="space-y-6">
+      {/* Feedback Banner */}
+      {feedbackNotice && (
+        <div
+          className={`px-4 py-3 rounded-2xl flex items-center justify-between text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200 ${
+            feedbackNotice.type === "error"
+              ? "bg-rose-50 text-rose-700 border border-rose-200"
+              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{feedbackNotice.message}</span>
+          </div>
+          <button
+            onClick={() => setFeedbackNotice(null)}
+            className="p-1 hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -159,12 +254,8 @@ export default function RecurringPage() {
         </div>
 
         <button
-          onClick={() => {
-            const firstCat = categories.find((c) => c.type === "expense");
-            if (firstCat) setCategoryId(firstCat.id);
-            setShowModal(true);
-          }}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all"
+          onClick={handleOpenModal}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
         >
           <PlusCircle className="w-4 h-4" />
           <span>เพิ่มรายการประจำ</span>
@@ -187,8 +278,8 @@ export default function RecurringPage() {
               สร้างรายการประจำเพื่อช่วยเตือนและบันทึกค่าบริการรายเดือนได้อย่างสะดวกและไม่ตกหล่น
             </p>
             <button
-              onClick={() => setShowModal(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+              onClick={handleOpenModal}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 cursor-pointer"
             >
               <PlusCircle className="w-4 h-4" />
               <span>สร้างรายการประจำแรก</span>
@@ -259,8 +350,8 @@ export default function RecurringPage() {
                     <div className="flex items-center gap-1.5">
                       {item.isActive && (
                         <button
-                          onClick={() => handleExecuteNow(item)}
-                          className="px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg flex items-center gap-1"
+                          onClick={() => setExecuteTarget(item)}
+                          className="px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
                           title="บันทึกเป็นธุรกรรมจริงทันที"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
@@ -270,7 +361,7 @@ export default function RecurringPage() {
 
                       <button
                         onClick={() => handleToggleActive(item)}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
+                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
                         title={item.isActive ? "หยุดชั่วคราว" : "เปิดใช้งานต่อ"}
                       >
                         {item.isActive ? (
@@ -281,8 +372,8 @@ export default function RecurringPage() {
                       </button>
 
                       <button
-                        onClick={() => handleDelete(item)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                        onClick={() => setDeleteTarget(item)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
                         title="ลบ"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -302,7 +393,7 @@ export default function RecurringPage() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 relative">
             <button
               onClick={() => setShowModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -317,12 +408,24 @@ export default function RecurringPage() {
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder="เช่น ค่าเช่าห้อง, ค่าอินเทอร์เน็ต, Netflix, ค่าผ่อนรถ"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-500"
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    if (fieldErrors.title) setFieldErrors((p) => ({ ...p, title: undefined }));
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs text-slate-900 transition-colors focus:bg-white focus:outline-none ${
+                    fieldErrors.title
+                      ? "border-2 border-rose-400 bg-rose-50/30 focus:border-rose-500"
+                      : "border border-slate-200 bg-slate-50 focus:border-blue-500"
+                  }`}
                 />
+                {fieldErrors.title && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1 flex items-center gap-1 animate-in fade-in">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>{fieldErrors.title}</span>
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -334,12 +437,24 @@ export default function RecurringPage() {
                     type="number"
                     step="0.01"
                     min="1"
-                    required
                     placeholder="0.00"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-500"
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                      if (fieldErrors.amount) setFieldErrors((p) => ({ ...p, amount: undefined }));
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl text-xs font-bold text-slate-900 transition-colors focus:bg-white focus:outline-none ${
+                      fieldErrors.amount
+                        ? "border-2 border-rose-400 bg-rose-50/30 focus:border-rose-500"
+                        : "border border-slate-200 bg-slate-50 focus:border-blue-500"
+                    }`}
                   />
+                  {fieldErrors.amount && (
+                    <p className="text-[11px] text-rose-600 font-medium mt-1 flex items-center gap-1 animate-in fade-in">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>{fieldErrors.amount}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -348,9 +463,17 @@ export default function RecurringPage() {
                   </label>
                   <select
                     value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-500"
+                    onChange={(e) => {
+                      setCategoryId(e.target.value);
+                      if (fieldErrors.categoryId) setFieldErrors((p) => ({ ...p, categoryId: undefined }));
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl text-xs text-slate-900 transition-colors focus:bg-white focus:outline-none ${
+                      fieldErrors.categoryId
+                        ? "border-2 border-rose-400 bg-rose-50/30 focus:border-rose-500"
+                        : "border border-slate-200 bg-slate-50 focus:border-blue-500"
+                    }`}
                   >
+                    <option value="">-- เลือกหมวดหมู่ --</option>
                     {categories
                       .filter((c) => c.type === type && !c.isArchived)
                       .map((c) => (
@@ -359,6 +482,12 @@ export default function RecurringPage() {
                         </option>
                       ))}
                   </select>
+                  {fieldErrors.categoryId && (
+                    <p className="text-[11px] text-rose-600 font-medium mt-1 flex items-center gap-1 animate-in fade-in">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>{fieldErrors.categoryId}</span>
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -372,7 +501,7 @@ export default function RecurringPage() {
                     value={frequency}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     onChange={(e) => setFrequency(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-500 cursor-pointer"
                   >
                     <option value="monthly">ทุกเดือน (Monthly)</option>
                     <option value="weekly">ทุกสัปดาห์ (Weekly)</option>
@@ -389,23 +518,30 @@ export default function RecurringPage() {
                     required
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-500 cursor-pointer"
                   />
                 </div>
               </div>
+
+              {fieldErrors.general && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-1.5 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{fieldErrors.general}</span>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-3">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs disabled:opacity-50"
+                  className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting ? "กำลังบันทึก..." : "สร้างรายการประจำ"}
                 </button>
@@ -414,6 +550,32 @@ export default function RecurringPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="ยืนยันการลบรายการประจำ"
+        description={`คุณต้องการลบรายการประจำ "${deleteTarget?.title}" ใช่หรือไม่? ข้อมูลนี้จะถูกลบถาวร`}
+        confirmText="ลบรายการ"
+        cancelText="ยกเลิก"
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
+
+      {/* Execute Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!executeTarget}
+        title="ยืนยันการบันทึกเป็นธุรกรรมจริง"
+        description={`ยืนยันการบันทึก "${executeTarget?.title}" จำนวน ${executeTarget ? formatCurrency(executeTarget.amount) : "฿0.00"} เป็นธุรกรรมจริงของรอบวันที่ ${executeTarget?.nextDueDate ? formatThaiDate(executeTarget.nextDueDate) : ""} หรือไม่?`}
+        confirmText="บันทึกธุรกรรม"
+        cancelText="ยกเลิก"
+        variant="primary"
+        isLoading={isExecuting}
+        onConfirm={handleConfirmExecute}
+        onClose={() => setExecuteTarget(null)}
+      />
     </div>
   );
 }

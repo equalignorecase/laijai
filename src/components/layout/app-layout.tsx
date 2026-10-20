@@ -10,12 +10,14 @@ import {
 } from "@/services/recurring-service";
 import { getCurrentDateStr } from "@/lib/utils";
 import { CalendarSync, CheckCircle2, X } from "lucide-react";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { uid } = useAuth();
   const [dueRecurring, setDueRecurring] = useState<RecurringTransaction[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
     if (!uid) return;
@@ -40,11 +42,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         await executeRecurringTransaction(uid, item);
       }
       setDueRecurring([]);
-      alert("บันทึกรายการประจำที่ถึงกำหนดเรียบร้อยแล้ว!");
+      setShowConfirmModal(false);
       window.location.reload();
     } catch (err) {
       console.error("Error executing recurring transactions:", err);
-      alert("เกิดข้อผิดพลาดในการบันทึกรายการประจำ");
+      setShowConfirmModal(false);
     } finally {
       setIsProcessing(false);
     }
@@ -67,16 +69,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={handleConfirmAllDue}
+                onClick={() => setShowConfirmModal(true)}
                 disabled={isProcessing}
-                className="bg-white text-amber-700 hover:bg-amber-50 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                className="bg-white text-amber-700 hover:bg-amber-50 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>{isProcessing ? "กำลังบันทึก..." : "ยืนยันบันทึกทั้งหมด"}</span>
+                <span>ยืนยันบันทึกทั้งหมด</span>
               </button>
               <button
                 onClick={() => setBannerDismissed(true)}
-                className="text-white/80 hover:text-white p-1 rounded-md"
+                className="text-white/80 hover:text-white p-1 rounded-md cursor-pointer"
                 aria-label="Dismiss banner"
               >
                 <X className="w-4 h-4" />
@@ -90,6 +92,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showConfirmModal}
+        title="ยืนยันการบันทึกรายการประจำทั้งหมด"
+        description={`คุณต้องการบันทึกรายการประจำที่ถึงกำหนดชำระทั้ง ${dueRecurring.length} รายการเป็นธุรกรรมจริงลงในระบบใช่หรือไม่?`}
+        confirmText="ยืนยันบันทึกทั้งหมด"
+        cancelText="ยกเลิก"
+        variant="primary"
+        isLoading={isProcessing}
+        onConfirm={handleConfirmAllDue}
+        onClose={() => setShowConfirmModal(false)}
+      />
     </div>
   );
 }

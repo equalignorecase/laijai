@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { User, onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { auth } from "@/lib/firebase/client";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, firestore } from "@/lib/firebase/client";
 import { Category } from "@/types";
 import { getCategories, seedDefaultCategoriesIfEmpty } from "@/services/category-service";
 
@@ -32,6 +33,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadUserCategories = async (userId: string) => {
     try {
+      // Ensure real document exists at users/${userId} so it is visible as a real (non-italic) document in Firebase Console
+      await setDoc(
+        doc(firestore, "users", userId),
+        {
+          uid: userId,
+          lastActive: new Date().toISOString(),
+          appName: "Laijai - Expense Tracker",
+        },
+        { merge: true }
+      );
+
       const cats = await seedDefaultCategoriesIfEmpty(userId);
       setCategories(cats);
     } catch (err: unknown) {

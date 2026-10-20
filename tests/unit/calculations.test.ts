@@ -99,4 +99,114 @@ describe("Financial Calculations & Utilities (Expense Only)", () => {
     const travelStatus = statuses.find((s) => s.budget.categoryId === "cat-travel")!;
     expect(travelStatus.percentageUsed).toBe(0); // Protected against NaN/Infinity
   });
+
+  it("calculates custom date range budget (all categories vs specific category)", () => {
+    const categories: Category[] = [
+      {
+        id: "cat-food",
+        name: "อาหาร",
+        type: "expense",
+        icon: "Utensils",
+        color: "#EF4444",
+        isDefault: true,
+        isArchived: false,
+        createdAt: "",
+        updatedAt: "",
+      },
+      {
+        id: "cat-travel",
+        name: "เดินทาง",
+        type: "expense",
+        icon: "Car",
+        color: "#F97316",
+        isDefault: true,
+        isArchived: false,
+        createdAt: "",
+        updatedAt: "",
+      },
+    ];
+
+    const customBudgets: Budget[] = [
+      {
+        id: "b-trip",
+        periodType: "custom",
+        name: "ทริปเชียงใหม่",
+        categoryId: "all",
+        startDate: "2026-10-20",
+        endDate: "2026-10-25",
+        amount: 10000,
+        createdAt: "",
+        updatedAt: "",
+      },
+      {
+        id: "b-food-midmonth",
+        periodType: "custom",
+        name: "ค่ากินกลางเดือน",
+        categoryId: "cat-food",
+        startDate: "2026-10-15",
+        endDate: "2026-10-20",
+        amount: 3000,
+        createdAt: "",
+        updatedAt: "",
+      },
+    ];
+
+    const transactions: Transaction[] = [
+      {
+        id: "tx1",
+        type: "expense",
+        amount: 2000,
+        currency: "THB",
+        title: "ตั๋วเครื่องบิน",
+        categoryId: "cat-travel",
+        transactionDate: "2026-10-21",
+        timezone: "Asia/Bangkok",
+        source: "manual",
+        createdAt: "",
+        updatedAt: "",
+      },
+      {
+        id: "tx2",
+        type: "expense",
+        amount: 1500,
+        currency: "THB",
+        title: "ข้าวซอย",
+        categoryId: "cat-food",
+        transactionDate: "2026-10-22",
+        timezone: "Asia/Bangkok",
+        source: "manual",
+        createdAt: "",
+        updatedAt: "",
+      },
+      {
+        id: "tx3",
+        type: "expense",
+        amount: 1000,
+        currency: "THB",
+        title: "อาหารก่อนเริ่มทริป",
+        categoryId: "cat-food",
+        transactionDate: "2026-10-18",
+        timezone: "Asia/Bangkok",
+        source: "manual",
+        createdAt: "",
+        updatedAt: "",
+      },
+    ];
+
+    const statuses = computeBudgetStatuses(customBudgets, transactions, categories, "2026-10-22");
+
+    // All-categories trip budget: tx1 (2000) + tx2 (1500) = 3500 (tx3 is outside range)
+    const tripStatus = statuses.find((s) => s.budget.id === "b-trip")!;
+    expect(tripStatus.isAllCategories).toBe(true);
+    expect(tripStatus.spent).toBe(3500);
+    expect(tripStatus.remaining).toBe(6500);
+    expect(tripStatus.status).toBe("active");
+
+    // Food midmonth: tx3 on 2026-10-18 falls in 15-20 range = 1000
+    const foodStatus = statuses.find((s) => s.budget.id === "b-food-midmonth")!;
+    expect(foodStatus.isAllCategories).toBe(false);
+    expect(foodStatus.spent).toBe(1000);
+    expect(foodStatus.remaining).toBe(2000);
+    expect(foodStatus.status).toBe("expired"); // 2026-10-22 is after 2026-10-20
+  });
 });

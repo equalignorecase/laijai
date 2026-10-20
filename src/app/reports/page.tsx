@@ -13,6 +13,8 @@ import {
 import {
   FileSpreadsheet,
   Download,
+  AlertCircle,
+  X,
 } from "lucide-react";
 
 export default function ReportsPage() {
@@ -83,13 +85,26 @@ export default function ReportsPage() {
     }
   }
 
+  const [exportNotice, setExportNotice] = useState<{
+    type: "error" | "success";
+    message: string;
+  } | null>(null);
+
   const handleExportCSV = () => {
     setIsExporting(true);
+    setExportNotice(null);
     try {
       exportToCSV(transactions, categories, `expense-report-${startDate}-to-${endDate}.csv`);
+      setExportNotice({
+        type: "success",
+        message: "ดาวน์โหลดไฟล์ CSV เรียบร้อยแล้ว",
+      });
     } catch (err) {
       console.error("Export CSV error:", err);
-      alert("เกิดข้อผิดพลาดในการส่งออกไฟล์ CSV");
+      setExportNotice({
+        type: "error",
+        message: "เกิดข้อผิดพลาดในการส่งออกไฟล์ CSV",
+      });
     } finally {
       setIsExporting(false);
     }
@@ -97,6 +112,7 @@ export default function ReportsPage() {
 
   const handleExportExcel = async () => {
     setIsExporting(true);
+    setExportNotice(null);
     try {
       await exportToExcel(
         transactions,
@@ -104,9 +120,16 @@ export default function ReportsPage() {
         `expense-report-${startDate}-to-${endDate}.xlsx`,
         `รายงานสรุปค่าใช้จ่าย (${startDate} ถึง ${endDate})`
       );
+      setExportNotice({
+        type: "success",
+        message: "สร้างและดาวน์โหลดไฟล์ Excel (.xlsx) สำเร็จแล้ว",
+      });
     } catch (err) {
       console.error("Export Excel error:", err);
-      alert("เกิดข้อผิดพลาดในการสร้างไฟล์ Excel (.xlsx)");
+      setExportNotice({
+        type: "error",
+        message: "เกิดข้อผิดพลาดในการสร้างไฟล์ Excel (.xlsx)",
+      });
     } finally {
       setIsExporting(false);
     }
@@ -114,6 +137,28 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Export Notice Banner */}
+      {exportNotice && (
+        <div
+          className={`px-4 py-3 rounded-2xl flex items-center justify-between text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200 ${
+            exportNotice.type === "error"
+              ? "bg-rose-50 text-rose-700 border border-rose-200"
+              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{exportNotice.message}</span>
+          </div>
+          <button
+            onClick={() => setExportNotice(null)}
+            className="p-1 hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

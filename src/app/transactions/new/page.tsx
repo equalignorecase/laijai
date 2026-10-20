@@ -44,6 +44,13 @@ export default function NewTransactionPage() {
   const [source, setSource] = useState<"manual" | "receipt_ai">("manual");
   const [ocrEngine, setOcrEngine] = useState<"tesseract" | "gemini" | null>(null);
 
+  const [fieldErrors, setFieldErrors] = useState<{
+    amount?: string;
+    title?: string;
+    categoryId?: string;
+  }>({});
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   // Duplicate check modal state
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState<DuplicateCheckResult | null>(null);
@@ -76,6 +83,7 @@ export default function NewTransactionPage() {
 
     if (result.data.amount) {
       setAmount(result.data.amount.toString());
+      setFieldErrors((prev) => ({ ...prev, amount: undefined }));
     }
     if (result.data.date) {
       setTransactionDate(result.data.date);
@@ -95,7 +103,6 @@ export default function NewTransactionPage() {
     if (result.data.reference) {
       setReferenceNumber(result.data.reference);
     }
-    // Note: Do not auto-fill title, user enters manually
 
     // Auto-match category from suggested name
     if (result.data.suggestedCategory) {
@@ -106,6 +113,7 @@ export default function NewTransactionPage() {
       );
       if (match) {
         setCategoryId(match.id);
+        setFieldErrors((prev) => ({ ...prev, categoryId: undefined }));
       }
     }
 
@@ -118,48 +126,55 @@ export default function NewTransactionPage() {
 
   const handleSave = async (forceBypassDuplicate = false) => {
     setFormError(null);
+    const errors: { amount?: string; title?: string; categoryId?: string } = {};
 
     if (!uid) {
-      setFormError("ยังไม่ได้เข้าสู่ระบบ กรุณารอสักครู่");
+      setFormError("ยังไม่ได้เข้าสู่ระบบ กำลังเชื่อมต่อฐานข้อมูล กรุณารอสักครู่แล้วกดใหม่อีกครั้ง");
       return;
     }
 
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      setFormError("กรุณากรอกจำนวนเงินให้ถูกต้อง (ต้องเป็นตัวเลขมากกว่า 0)");
-      return;
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+      errors.amount = "กรุณากรอกจำนวนเงินให้ถูกต้อง (ต้องเป็นตัวเลขมากกว่า 0)";
     }
 
     if (!title.trim()) {
-      setFormError("กรุณากรอกชื่อรายการ");
-      return;
+      errors.title = "กรุณากรอกชื่อรายการ (เช่น ค่าอาหาร, กาแฟ, ช้อปปิ้ง)";
     }
 
     if (!categoryId) {
-      setFormError("กรุณาเลือกหมวดหมู่");
+      errors.categoryId = "กรุณาเลือกหมวดหมู่";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setFormError("กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน");
       return;
     }
 
-    // Duplicate Check
-    if (!forceBypassDuplicate) {
-      const dupCheck = await checkDuplicateTransaction(uid, {
-        referenceNumber: referenceNumber.trim() || undefined,
-        amount: parsedAmount,
-        transactionDate,
-        recipientName: recipientName.trim() || undefined,
-        bankName: bankName.trim() || undefined,
-      });
-
-      if (dupCheck.isDuplicate && dupCheck.matchedTransaction) {
-        setDuplicateInfo(dupCheck);
-        setDuplicateModalOpen(true);
-        return;
-      }
-    }
-
-    // Proceed to save
+    setFieldErrors({});
     setIsSubmitting(true);
+
     try {
+      // 1. Duplicate Check
+      if (!forceBypassDuplicate) {
+        const dupCheck = await checkDuplicateTransaction(uid, {
+          referenceNumber: referenceNumber.trim() || undefined,
+          amount: parsedAmount,
+          transactionDate,
+          recipientName: recipientName.trim() || undefined,
+          bankName: bankName.trim() || undefined,
+        });
+
+        if (dupCheck.isDuplicate && dupCheck.matchedTransaction) {
+          setDuplicateInfo(dupCheck);
+          setDuplicateModalOpen(true);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // 2. Create Transaction
       await createTransaction(uid, {
         type,
         amount: parsedAmount,
@@ -180,11 +195,17 @@ export default function NewTransactionPage() {
         duplicateStatus: forceBypassDuplicate ? "possible_duplicate" : "unique",
       });
 
-      router.push("/transactions");
+      // 3. Success state & navigation
+      setSaveSuccess(true);
+      const targetMonth = transactionDate ? transactionDate.slice(0, 7) : "";
+      setTimeout(() => {
+        router.refresh();
+        router.push(targetMonth ? `/transactions?month=${targetMonth}` : "/transactions");
+      }, 500);
     } catch (err: unknown) {
       console.error("Save transaction error:", err);
-      setFormError("เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง");
-    } finally {
+      const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการบันทึกข้อมูล";
+      setFormError(`เกิดข้อผิดพลาด: ${msg} กรุณาลองใหม่อีกครั้ง`);
       setIsSubmitting(false);
     }
   };
@@ -233,7 +254,7 @@ export default function NewTransactionPage() {
       <SlipUploader
         categories={categories}
         onParsed={handleSlipParsed}
-        disabled={isSubmitting}
+        disabled={isSubmitting || saveSuccess}
       />
 
       {/* AI Warnings if any */}
@@ -253,12 +274,20 @@ export default function NewTransactionPage() {
 
       {/* Transaction Form Card */}
       <form
+        noValidate
         onSubmit={(e) => {
           e.preventDefault();
           handleSave(false);
         }}
         className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6"
       >
+        {/* Success Banner */}
+        {saveSuccess && (
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 font-semibold flex items-center gap-2.5 animate-in fade-in">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>บันทึกรายจ่ายสำเร็จเรียบร้อย! กำลังนำคุณไปยังหน้ารายการ...</span>
+          </div>
+        )}
 
         {/* 1. จำนวนเงิน & 2. ชื่อรายการ (กรอกเอง) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -274,13 +303,24 @@ export default function NewTransactionPage() {
                 type="number"
                 step="0.01"
                 min="0.01"
-                required
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  if (fieldErrors.amount) {
+                    setFieldErrors((prev) => ({ ...prev, amount: undefined }));
+                  }
+                }}
                 placeholder="0.00"
-                className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-hidden transition-all"
+                className={`w-full pl-8 pr-4 py-2.5 rounded-xl text-base font-bold text-slate-900 transition-all ${
+                  fieldErrors.amount
+                    ? "bg-rose-50/50 border-2 border-rose-400 focus:bg-white focus:outline-hidden"
+                    : "bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-hidden"
+                }`}
               />
             </div>
+            {fieldErrors.amount && (
+              <p className="text-xs text-rose-500 font-medium mt-1">{fieldErrors.amount}</p>
+            )}
           </div>
 
           <div>
@@ -289,12 +329,41 @@ export default function NewTransactionPage() {
             </label>
             <input
               type="text"
-              required
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (fieldErrors.title) {
+                  setFieldErrors((prev) => ({ ...prev, title: undefined }));
+                }
+              }}
               placeholder="เช่น ค่าอาหาร, กาแฟ, น้ำมัน, ค่าเน็ต"
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-hidden transition-all"
+              className={`w-full px-4 py-2.5 rounded-xl text-sm text-slate-900 transition-all ${
+                fieldErrors.title
+                  ? "bg-rose-50/50 border-2 border-rose-400 focus:bg-white focus:outline-hidden"
+                  : "bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-hidden"
+              }`}
             />
+            {fieldErrors.title && (
+              <p className="text-xs text-rose-500 font-medium mt-1">{fieldErrors.title}</p>
+            )}
+
+            {/* Quick Suggestion Chip from Slip Recipient */}
+            {recipientName && !title && (
+              <div className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+                <span>แนะนำ:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitle(`จ่าย ${recipientName}`);
+                    setFieldErrors((prev) => ({ ...prev, title: undefined }));
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-xs transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  <span>ใช้ชื่อ "จ่าย {recipientName}"</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -306,8 +375,17 @@ export default function NewTransactionPage() {
             </label>
             <select
               value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-hidden transition-all"
+              onChange={(e) => {
+                setCategoryId(e.target.value);
+                if (fieldErrors.categoryId) {
+                  setFieldErrors((prev) => ({ ...prev, categoryId: undefined }));
+                }
+              }}
+              className={`w-full px-3.5 py-2.5 rounded-xl text-sm text-slate-900 transition-all ${
+                fieldErrors.categoryId
+                  ? "bg-rose-50/50 border-2 border-rose-400 focus:bg-white focus:outline-hidden"
+                  : "bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-hidden"
+              }`}
             >
               {availableCategories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
@@ -315,6 +393,9 @@ export default function NewTransactionPage() {
                 </option>
               ))}
             </select>
+            {fieldErrors.categoryId && (
+              <p className="text-xs text-rose-500 font-medium mt-1">{fieldErrors.categoryId}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -322,7 +403,6 @@ export default function NewTransactionPage() {
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">วันที่</label>
               <input
                 type="date"
-                required
                 value={transactionDate}
                 onChange={(e) => setTransactionDate(e.target.value)}
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-hidden"
@@ -385,11 +465,25 @@ export default function NewTransactionPage() {
           </Link>
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-sm shadow-blue-600/30 disabled:opacity-50"
+            disabled={isSubmitting || saveSuccess}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-sm shadow-blue-600/30 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
           >
-            <Save className="w-4 h-4" />
-            <span>{isSubmitting ? "กำลังบันทึก..." : "บันทึกรายจ่าย"}</span>
+            {isSubmitting ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
+                <span>กำลังบันทึก...</span>
+              </>
+            ) : saveSuccess ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                <span>บันทึกสำเร็จ!</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>บันทึกรายจ่าย</span>
+              </>
+            )}
           </button>
         </div>
       </form>
