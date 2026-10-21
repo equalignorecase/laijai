@@ -42,7 +42,7 @@ export function exportToCSV(
   const rows = transactions.map((t) => [
     t.transactionDate,
     t.transactionTime || "-",
-    categoryMap.get(t.categoryId) || "ไม่ระบุ",
+    (t.categoryId && categoryMap.get(t.categoryId)) || "ทั่วไป",
     t.title,
     t.amount.toFixed(2),
     t.recipientName || "-",
@@ -138,7 +138,7 @@ export async function exportToExcel(
     worksheet.addRow([
       t.transactionDate,
       t.transactionTime || "-",
-      categoryMap.get(t.categoryId) || "ไม่ระบุ",
+      (t.categoryId && categoryMap.get(t.categoryId)) || "ทั่วไป",
       t.title,
       t.amount,
       t.recipientName || "-",

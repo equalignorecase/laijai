@@ -157,7 +157,6 @@ export default function TransactionsPage() {
   // Filter and Search logic
   const filteredList = useMemo(() => {
     return dateFiltered.filter((tx) => {
-      if (filterCategory !== "all" && tx.categoryId !== filterCategory) return false;
       if (searchQuery.trim() !== "") {
         const q = searchQuery.toLowerCase();
         const matchTitle = tx.title.toLowerCase().includes(q);
@@ -168,7 +167,7 @@ export default function TransactionsPage() {
       }
       return true;
     });
-  }, [dateFiltered, filterCategory, searchQuery]);
+  }, [dateFiltered, searchQuery]);
 
   // Sort logic
   const sortedList = useMemo(() => {
@@ -201,18 +200,18 @@ export default function TransactionsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <Link
             href="/reports"
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-all"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-all"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
             <span>ส่งออกรายงาน</span>
           </Link>
 
           <Link
-            href="/transactions/new"
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all shadow-blue-600/20"
+            href="/"
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all shadow-blue-600/20"
           >
             <PlusCircle className="w-4 h-4" />
             <span>+ เพิ่มรายการใหม่</span>
@@ -278,7 +277,7 @@ export default function TransactionsPage() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] text-slate-400">จาก</span>
             <input
               type="date"
@@ -304,8 +303,8 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        {/* Search, Category & Sorting */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Search & Sorting */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Search box */}
           <div className="relative">
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">
@@ -315,7 +314,7 @@ export default function TransactionsPage() {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="ชื่อ, ผู้รับ, เลขอ้างอิง..."
+                placeholder="ชื่อรายการ, ผู้รับ, เลขอ้างอิง..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -324,28 +323,6 @@ export default function TransactionsPage() {
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-hidden"
               />
             </div>
-          </div>
-
-          {/* Category filter */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-              หมวดหมู่รายจ่าย
-            </label>
-            <select
-              value={filterCategory}
-              onChange={(e) => {
-                setFilterCategory(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-hidden"
-            >
-              <option value="all">ทุกหมวดหมู่</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* Sort By */}
@@ -409,7 +386,7 @@ export default function TransactionsPage() {
                 ดูทั้งหมด ({allTransactions.length} รายการ)
               </button>
               <Link
-                href="/transactions/new"
+                href="/"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold shadow-xs hover:bg-blue-700 transition-colors"
               >
                 <PlusCircle className="w-4 h-4" />
@@ -419,21 +396,66 @@ export default function TransactionsPage() {
           </div>
         ) : (
           <div>
-            <div className="overflow-x-auto">
+            {/* Mobile View: Transaction Cards (No horizontal scroll needed) */}
+            <div className="block md:hidden divide-y divide-slate-100">
+              {paginatedList.map((tx) => (
+                <div key={tx.id} className="p-3.5 space-y-2 hover:bg-slate-50/60 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-semibold text-sm text-slate-900 truncate">{tx.title}</h4>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+                        <span>{formatThaiDate(tx.transactionDate, "d MMM yyyy")}</span>
+                        {tx.transactionTime && <span>• {tx.transactionTime} น.</span>}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="font-bold text-sm text-slate-900 whitespace-nowrap">
+                        -{formatCurrency(tx.amount)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500 pt-0.5">
+                    <div className="truncate text-[11px] text-slate-500 flex-1 min-w-0">
+                      {tx.recipientName || tx.merchantName ? (
+                        <span>ถึง {tx.recipientName || tx.merchantName}</span>
+                      ) : tx.description ? (
+                        <span className="text-slate-400">{tx.description}</span>
+                      ) : (
+                        <span className="text-slate-300">-</span>
+                      )}
+                      {tx.referenceNumber && (
+                        <span className="font-mono text-[10px] text-slate-400 ml-1.5">
+                          #{tx.referenceNumber.slice(-6)}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleDelete(tx.id, tx.title)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                      title="ลบรายการ"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop View: Full Data Table */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold">
                   <tr>
                     <th className="py-3 px-4">วันที่ / เวลา</th>
                     <th className="py-3 px-4">รายการ</th>
-                    <th className="py-3 px-4">หมวดหมู่</th>
-                    <th className="py-3 px-4">ผู้รับ / ร้านค้า</th>
+                    <th className="py-3 px-4">ผู้รับ / ร้านค้า / หมายเหตุ</th>
                     <th className="py-3 px-4 text-right">จำนวนเงิน</th>
                     <th className="py-3 px-4 text-center">จัดการ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {paginatedList.map((tx) => {
-                    const cat = categoryMap.get(tx.categoryId);
                     return (
                       <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
@@ -454,21 +476,11 @@ export default function TransactionsPage() {
                           )}
                         </td>
 
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1.5">
-                            <CategoryIcon
-                              name={cat?.icon || "CircleDot"}
-                              color={cat?.color || "#3B82F6"}
-                              size={16}
-                            />
-                            <span className="font-medium text-slate-700">
-                              {cat?.name || "ไม่ระบุ"}
-                            </span>
-                          </div>
-                        </td>
-
                         <td className="py-3.5 px-4 text-slate-600">
-                          {tx.recipientName || tx.merchantName || "-"}
+                          <div>{tx.recipientName || tx.merchantName || "-"}</div>
+                          {tx.description && (
+                            <div className="text-[11px] text-slate-400 truncate max-w-xs">{tx.description}</div>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-4 text-right font-bold text-slate-900 whitespace-nowrap">

@@ -8,7 +8,7 @@ export interface Transaction {
 
   title: string;
   description?: string;
-  categoryId: string;
+  categoryId?: string;
 
   transactionDate: string; // YYYY-MM-DD
   transactionTime?: string; // HH:mm

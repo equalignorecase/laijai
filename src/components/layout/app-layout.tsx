@@ -59,7 +59,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Recurring Due Alert Banner */}
         {dueRecurring.length > 0 && !bannerDismissed && (
-          <div className="bg-amber-500 text-white px-4 py-3 flex items-center justify-between text-sm shadow-sm transition-all animate-in fade-in slide-in-from-top duration-300">
+          <div className="bg-amber-500 text-white px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs sm:text-sm shadow-sm transition-all animate-in fade-in slide-in-from-top duration-300">
             <div className="flex items-center gap-2.5 font-medium">
               <CalendarSync className="w-5 h-5 shrink-0" />
               <span>
@@ -67,7 +67,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 ต้องการบันทึกเป็นธุรกรรมจริงหรือไม่?
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
               <button
                 onClick={() => setShowConfirmModal(true)}
                 disabled={isProcessing}
@@ -88,7 +88,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 p-4 md:p-8 pb-24 md:pb-12 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-3.5 sm:p-6 md:p-8 pb-28 md:pb-12 max-w-7xl w-full mx-auto">
           {children}
         </main>
       </div>

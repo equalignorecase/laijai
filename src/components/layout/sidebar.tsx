@@ -22,14 +22,10 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
 
 const navItems = [
-  { href: "/", label: "ภาพรวม", icon: LayoutDashboard },
-  { href: "/transactions", label: "ธุรกรรม", icon: Receipt },
-  { href: "/transactions/new", label: "เพิ่มรายการ", icon: PlusCircle, isHighlight: true },
-  { href: "/budgets", label: "งบประมาณ", icon: PieChart },
-  { href: "/categories", label: "หมวดหมู่", icon: Tags },
-  { href: "/recurring", label: "รายการประจำ", icon: CalendarSync },
-  { href: "/reports", label: "รายงาน & ส่งออก", icon: FileSpreadsheet },
-  { href: "/debug/ocr", label: "Debug OCR", icon: FlaskConical },
+  { href: "/dashboard", label: "แดชบอร์ดภาพรวม", icon: LayoutDashboard },
+  { href: "/transactions", label: "ประวัติธุรกรรม", icon: Receipt },
+  { href: "/", label: "บันทึกรายจ่าย", icon: PlusCircle, isHighlight: true },
+  { href: "/reports", label: "รายงานสรุป", icon: FileSpreadsheet },
 ];
 
 export function Sidebar() {
@@ -65,8 +61,13 @@ export function Sidebar() {
 
         {/* Quick Add Button */}
         <Link
-          href="/transactions/new"
-          className="flex items-center justify-center gap-2 w-full py-2.5 px-4 mb-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all shadow-sm shadow-blue-600/30 hover:shadow-md hover:scale-[1.01] active:scale-[0.99]"
+          href="/"
+          className={cn(
+            "flex items-center justify-center gap-2 w-full py-2.5 px-4 mb-6 rounded-xl font-medium text-sm transition-all shadow-sm hover:scale-[1.01] active:scale-[0.99]",
+            pathname === "/"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20"
+              : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/30 hover:shadow-md"
+          )}
         >
           <PlusCircle className="w-4 h-4" />
           <span>บันทึกรายจ่าย</span>
@@ -163,25 +164,38 @@ export function Sidebar() {
       </aside>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex items-center justify-around shadow-lg">
-        {navItems
-          .filter((i) => i.href !== "/reports" && i.href !== "/categories")
-          .map((item) => {
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex items-center justify-around shadow-lg">
+        {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
 
             if (item.isHighlight) {
+              const isHighlightActive = pathname === "/";
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className="flex flex-col items-center justify-center -mt-5"
                 >
-                  <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30">
+                  <div
+                    className={cn(
+                      "w-12 h-12 rounded-full text-white flex items-center justify-center shadow-lg transition-transform",
+                      isHighlightActive
+                        ? "bg-blue-700 shadow-blue-700/40 ring-4 ring-blue-100 scale-105"
+                        : "bg-blue-600 shadow-blue-600/30 hover:scale-105"
+                    )}
+                  >
                     <PlusCircle className="w-6 h-6" />
                   </div>
-                  <span className="text-[10px] font-medium text-slate-600 mt-0.5">เพิ่ม</span>
+                  <span
+                    className={cn(
+                      "text-[10px] mt-0.5",
+                      isHighlightActive ? "font-bold text-blue-600" : "font-medium text-slate-600"
+                    )}
+                  >
+                    บันทึก
+                  </span>
                 </Link>
               );
             }

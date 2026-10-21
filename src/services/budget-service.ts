@@ -152,6 +152,44 @@ export async function upsertBudget(
   });
 }
 
+export async function getPrimaryBudget(uid: string): Promise<Budget> {
+  const budgets = await getAllBudgets(uid);
+  if (budgets.length > 0) {
+    const primary = budgets.find((b) => b.id === "primary_budget") || budgets[0];
+    return primary;
+  }
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+  return {
+    id: "primary_budget",
+    name: "งบประมาณปัจจุบัน",
+    periodType: "custom",
+    categoryId: "all",
+    startDate: `${year}-${month}-01`,
+    endDate: `${year}-${month}-${String(lastDay).padStart(2, "0")}`,
+    amount: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function savePrimaryBudget(
+  uid: string,
+  payload: { startDate: string; endDate: string; amount: number; name?: string }
+): Promise<Budget> {
+  return saveBudget(uid, {
+    id: "primary_budget",
+    periodType: "custom",
+    categoryId: "all",
+    startDate: payload.startDate,
+    endDate: payload.endDate,
+    amount: payload.amount,
+    name: payload.name || "งบประมาณปัจจุบัน",
+  });
+}
+
 export async function deleteBudget(uid: string, id: string): Promise<void> {
   const docRef = doc(firestore, `users/${uid}/budgets/${id}`);
   await deleteDoc(docRef);

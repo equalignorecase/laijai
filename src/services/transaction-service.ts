@@ -186,6 +186,7 @@ export async function createTransaction(
 
   const docRef = await addDoc(txCol, {
     ...cleanData,
+    categoryId: data.categoryId || "all",
     currency: "THB",
     timezone: "Asia/Bangkok",
     createdAt: now,

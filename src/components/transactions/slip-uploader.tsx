@@ -190,66 +190,68 @@ export function SlipUploader({ categories, onParsed, disabled }: SlipUploaderPro
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-slate-200 shrink-0 border border-slate-300">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={previewUrl}
-                alt="สลิปที่อัปโหลด"
-                className="w-full h-full object-cover"
-              />
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
+              <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-slate-200 shrink-0 border border-slate-300">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt="สลิปที่อัปโหลด"
+                  className="w-full h-full object-cover"
+                />
+              </div>
 
-            <div className="flex-1 min-w-0 text-xs">
-              <p className="font-medium text-slate-800 truncate">{selectedFile?.name}</p>
+              <div className="flex-1 min-w-0 text-xs">
+                <p className="font-medium text-slate-800 truncate">{selectedFile?.name}</p>
 
-              {isAnalyzing ? (
-                <div className="space-y-1.5 mt-1.5">
-                  <div className="flex items-center justify-between text-[11px] text-blue-700 font-medium">
-                    <span className="flex items-center gap-1.5">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>{progressStatus || "กำลังประมวลผล..."}</span>
+                {isAnalyzing ? (
+                  <div className="space-y-1.5 mt-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-blue-700 font-medium">
+                      <span className="flex items-center gap-1.5">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                        <span className="truncate">{progressStatus || "กำลังประมวลผล..."}</span>
+                      </span>
+                      <span className="shrink-0">{progressPercent}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : successMsg ? (
+                  <div className="flex items-center gap-1.5 text-emerald-600 font-medium mt-1">
+                    <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">
+                      {lastEngineUsed === "tesseract"
+                        ? "Tesseract OCR อ่านสำเร็จ"
+                        : "Gemini AI อ่านสำเร็จ"}
                     </span>
-                    <span>{progressPercent}%</span>
                   </div>
-                  <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="bg-blue-600 h-full rounded-full transition-all duration-300"
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
-                </div>
-              ) : successMsg ? (
-                <div className="flex items-center gap-1.5 text-emerald-600 font-medium mt-1">
-                  <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    {lastEngineUsed === "tesseract"
-                      ? "Tesseract OCR อ่านสำเร็จ"
-                      : "Gemini AI อ่านสำเร็จ"}
-                  </span>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center justify-end gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
               {selectedFile && !isAnalyzing && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {/* Re-run Tesseract */}
                   <button
                     type="button"
                     onClick={() => runTesseract(selectedFile)}
-                    className="px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-200 rounded-lg font-medium flex items-center gap-1 border border-slate-200"
+                    className="px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-200 rounded-lg font-medium flex items-center gap-1 border border-slate-200 cursor-pointer"
                     title="อ่านใหม่ด้วย Tesseract"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">OCR ใหม่</span>
+                    <span>OCR ใหม่</span>
                   </button>
 
                   {/* Gemini AI Fallback Button */}
                   <button
                     type="button"
                     onClick={() => runGemini(selectedFile)}
-                    className="px-2.5 py-1.5 text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg font-medium flex items-center gap-1 border border-purple-200 shadow-2xs"
+                    className="px-2.5 py-1.5 text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg font-medium flex items-center gap-1 border border-purple-200 shadow-2xs cursor-pointer"
                     title="ลองอ่านด้วย Gemini AI สำรอง"
                   >
                     <Bot className="w-3.5 h-3.5 text-purple-600" />
@@ -262,7 +264,7 @@ export function SlipUploader({ categories, onParsed, disabled }: SlipUploaderPro
                 type="button"
                 onClick={handleClear}
                 disabled={isAnalyzing}
-                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                 title="ลบรูป"
               >
                 <X className="w-4 h-4" />

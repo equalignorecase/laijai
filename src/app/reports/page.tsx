@@ -25,11 +25,8 @@ export default function ReportsPage() {
   // Filters: default to current month range
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [filterCategory, setFilterCategory] = useState<string>("all");
 
   const [isExporting, setIsExporting] = useState(false);
-
-  const categoryMap = new Map(categories.map((c) => [c.id, c]));
 
   const loadData = async () => {
     if (!uid) return;
@@ -38,7 +35,6 @@ export default function ReportsPage() {
       const list = await getTransactions(uid, {
         startDate,
         endDate,
-        categoryId: filterCategory === "all" ? undefined : filterCategory,
       });
       setTransactions(list.filter((t) => t.type === "expense"));
     } catch (err) {
@@ -57,7 +53,7 @@ export default function ReportsPage() {
       return;
     }
     loadData();
-  }, [uid, startDate, endDate, filterCategory]);
+  }, [uid, startDate, endDate]);
 
   // Calculations
   const totalExpense = transactions.reduce((sum, t) => sum + t.amount, 0);
@@ -71,19 +67,7 @@ export default function ReportsPage() {
   }
   const dailyAverage = totalExpense > 0 ? totalExpense / dayDiff : 0;
 
-  // Find top expense category
-  const catSums = new Map<string, number>();
-  for (const t of transactions) {
-    catSums.set(t.categoryId, (catSums.get(t.categoryId) || 0) + t.amount);
-  }
-  let topCatName = "-";
-  let maxCatAmount = 0;
-  for (const [catId, sum] of catSums.entries()) {
-    if (sum > maxCatAmount) {
-      maxCatAmount = sum;
-      topCatName = categoryMap.get(catId)?.name || "-";
-    }
-  }
+
 
   const [exportNotice, setExportNotice] = useState<{
     type: "error" | "success";
@@ -168,11 +152,11 @@ export default function ReportsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <button
             onClick={handleExportCSV}
             disabled={isExporting || transactions.length === 0}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-colors disabled:opacity-50"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Download className="w-4 h-4 text-slate-500" />
             <span>ดาวน์โหลด CSV (UTF-8)</span>
@@ -181,7 +165,7 @@ export default function ReportsPage() {
           <button
             onClick={handleExportExcel}
             disabled={isExporting || transactions.length === 0}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition-all shadow-emerald-600/30 disabled:opacity-50"
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition-all shadow-emerald-600/30 disabled:opacity-50 cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>ดาวน์โหลด Excel (.xlsx)</span>
@@ -191,7 +175,7 @@ export default function ReportsPage() {
 
       {/* Filter Card */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">
               วันที่เริ่มต้น
@@ -215,29 +199,11 @@ export default function ReportsPage() {
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500"
             />
           </div>
-
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-              หมวดหมู่รายจ่าย
-            </label>
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-500"
-            >
-              <option value="all">ทุกหมวดหมู่</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <span className="text-xs font-semibold text-slate-500">รายจ่ายรวมทั้งหมด</span>
           <p className="text-2xl font-bold text-rose-600 mt-1">
@@ -259,21 +225,11 @@ export default function ReportsPage() {
           <p className="text-2xl font-bold text-slate-900 mt-1">{transactions.length}</p>
           <p className="text-[10px] text-slate-400 mt-0.5">รายการรายจ่าย</p>
         </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs font-semibold text-slate-500">หมวดหมู่ที่จ่ายมากสุด</span>
-          <p className="text-lg font-bold text-slate-900 mt-1 truncate">
-            {topCatName}
-          </p>
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            {maxCatAmount > 0 ? formatCurrency(maxCatAmount) : "-"}
-          </p>
-        </div>
       </div>
 
       {/* Data Table Preview */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
           <h3 className="font-bold text-sm text-slate-900">
             พรีวิวข้อมูลที่จะส่งออก ({transactions.length} รายการ)
           </h3>
@@ -294,7 +250,6 @@ export default function ReportsPage() {
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold sticky top-0">
                 <tr>
                   <th className="py-2.5 px-4">วันที่</th>
-                  <th className="py-2.5 px-4">หมวดหมู่</th>
                   <th className="py-2.5 px-4">ชื่อรายการ</th>
                   <th className="py-2.5 px-4">ผู้รับเงิน / ร้านค้า</th>
                   <th className="py-2.5 px-4 text-right">จำนวนเงิน</th>
@@ -303,14 +258,11 @@ export default function ReportsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {transactions.map((tx) => {
-                  const cat = categoryMap.get(tx.categoryId);
-
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/80">
                       <td className="py-2.5 px-4 whitespace-nowrap">
                         {formatThaiDate(tx.transactionDate)}
                       </td>
-                      <td className="py-2.5 px-4">{cat?.name || "-"}</td>
                       <td className="py-2.5 px-4 font-medium text-slate-800">{tx.title}</td>
                       <td className="py-2.5 px-4 text-slate-500">
                         {tx.recipientName || "-"}
