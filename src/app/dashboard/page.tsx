@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/auth-context";
+import { UserAuthButton } from "@/components/layout/user-auth-button";
 import { Transaction, Budget } from "@/types";
 import { getTransactions, deleteTransaction } from "@/services/transaction-service";
 import { getPrimaryBudget, savePrimaryBudget } from "@/services/budget-service";
@@ -40,7 +41,7 @@ import {
 } from "recharts";
 
 export default function DashboardPage() {
-  const { uid } = useAuth();
+  const { uid, isAnonymous } = useAuth();
   const [todayStr, setTodayStr] = useState<string>("");
   const [budget, setBudget] = useState<Budget | null>(null);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
@@ -425,6 +426,24 @@ export default function DashboardPage() {
           <span>+ บันทึกรายจ่าย</span>
         </Link>
       </div>
+
+      {/* Anonymous Data Safety Alert */}
+      {isAnonymous && (
+        <div className="p-3.5 bg-linear-to-r from-blue-50 to-indigo-50/60 border border-blue-200/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-slate-700 gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-900">คุณกำลังใช้งานโหมดชั่วคราว (ไม่ระบุตัวตน)</p>
+              <p className="text-[11px] text-slate-500">ข้อมูลอาจหายได้หากเบราว์เซอร์มือถือปิดหรือล้างแคช แนะนำเข้าสู่ระบบด้วย Google เพื่อบันทึกข้อมูลถาวร</p>
+            </div>
+          </div>
+          <div className="shrink-0 self-end sm:self-center">
+            <UserAuthButton compact />
+          </div>
+        </div>
+      )}
 
       {/* HERO CARD: การ์ดงบประมาณช่วงปัจจุบัน (Light Theme) */}
       <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-white via-slate-50/80 to-blue-50/40 text-slate-900 p-4 sm:p-6 md:p-8 shadow-xs border border-slate-200">

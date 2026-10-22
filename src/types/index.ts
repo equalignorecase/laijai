@@ -109,3 +109,20 @@ export interface UserPreferences {
   theme: "light";
   dateFormat: "dd/MM/yyyy";
 }
+
+export interface UserProfile {
+  uid: string;
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
+  role?: "admin" | "user" | "guest";
+  status?: "active" | "suspended";
+  lastActive?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  appName?: string;
+  // Computed metrics
+  transactionCount?: number;
+  totalExpense?: number;
+  hasBudget?: boolean;
+}

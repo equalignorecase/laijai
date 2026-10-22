@@ -12,6 +12,7 @@ import {
   CalendarSync,
   FileSpreadsheet,
   Wallet,
+  ShieldAlert,
   ShieldCheck,
   Server,
   FlaskConical,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
+import { UserAuthButton } from "./user-auth-button";
 
 const navItems = [
   { href: "/dashboard", label: "แดชบอร์ดภาพรวม", icon: LayoutDashboard },
@@ -30,7 +32,7 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { uid, loading } = useAuth();
+  const { uid, loading, isAdmin } = useAuth();
   const [copied, setCopied] = useState(false);
   const isEmulator = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "true";
 
@@ -103,19 +105,50 @@ export function Sidebar() {
               </Link>
             );
           })}
+
+          {/* Admin Section (Only for azzzx30089@gmail.com) */}
+          {isAdmin && (
+            <div className="pt-3 mt-3 border-t border-slate-100 space-y-1">
+              <span className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-purple-600 block">
+                ระบบจัดการ (Admin)
+              </span>
+              <Link
+                href="/admin/users"
+                className={cn(
+                  "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors",
+                  pathname.startsWith("/admin/users")
+                    ? "bg-purple-50 text-purple-700 font-semibold"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                <ShieldAlert
+                  className={cn(
+                    "w-5 h-5",
+                    pathname.startsWith("/admin/users") ? "text-purple-600" : "text-purple-400"
+                  )}
+                />
+                <span>จัดการผู้ใช้</span>
+              </Link>
+            </div>
+          )}
         </nav>
 
-        {/* Footer / Auth & Connection info */}
+        {/* Footer / User Auth & Connection info */}
         <div className="pt-4 border-t border-slate-100 space-y-2 text-xs">
-          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 space-y-2">
-            <div className="flex items-center justify-between text-slate-500">
+          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-500">บัญชีผู้ใช้:</span>
+              <UserAuthButton compact />
+            </div>
+
+            <div className="flex items-center justify-between text-slate-500 pt-1.5 border-t border-slate-200/60">
               <div className="flex items-center gap-1.5">
                 <Server className="w-3.5 h-3.5 text-blue-500" />
-                <span>ฐานข้อมูล:</span>
+                <span className="text-[11px]">ฐานข้อมูล:</span>
               </div>
               <span
                 className={cn(
-                  "px-2 py-0.5 rounded-full font-medium text-[11px]",
+                  "px-2 py-0.5 rounded-full font-medium text-[10px]",
                   isEmulator
                     ? "bg-amber-100 text-amber-800"
                     : "bg-emerald-100 text-emerald-800"
@@ -125,7 +158,7 @@ export function Sidebar() {
               </span>
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1.5 border-t border-slate-200/60">
+            <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
               <div className="flex items-center gap-1.5 truncate">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                 <span className="font-mono truncate">
@@ -153,12 +186,6 @@ export function Sidebar() {
                 </button>
               )}
             </div>
-
-            {uid && (
-              <p className="text-[10px] text-slate-400 font-mono break-all leading-tight">
-                ที่อยู่: users/{uid.slice(0, 6)}.../transactions
-              </p>
-            )}
           </div>
         </div>
       </aside>
@@ -214,6 +241,27 @@ export function Sidebar() {
               </Link>
             );
           })}
+
+        {/* Mobile Admin Item */}
+        {isAdmin && (
+          <Link
+            href="/admin/users"
+            className={cn(
+              "flex flex-col items-center justify-center py-1 px-2 rounded-lg text-xs font-medium transition-colors",
+              pathname.startsWith("/admin/users")
+                ? "text-purple-600 font-semibold"
+                : "text-slate-500 hover:text-slate-800"
+            )}
+          >
+            <ShieldAlert
+              className={cn(
+                "w-5 h-5",
+                pathname.startsWith("/admin/users") ? "text-purple-600" : "text-purple-400"
+              )}
+            />
+            <span className="text-[10px] mt-1">Admin</span>
+          </Link>
+        )}
       </nav>
     </>
   );
