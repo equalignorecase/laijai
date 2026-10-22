@@ -172,8 +172,20 @@ export default function TransactionsPage() {
   // Sort logic
   const sortedList = useMemo(() => {
     return [...filteredList].sort((a, b) => {
-      if (sortBy === "date_desc") return (b.transactionDate || "").localeCompare(a.transactionDate || "");
-      if (sortBy === "date_asc") return (a.transactionDate || "").localeCompare(b.transactionDate || "");
+      if (sortBy === "date_desc") {
+        const d = (b.transactionDate || "").localeCompare(a.transactionDate || "");
+        if (d !== 0) return d;
+        const t = (b.transactionTime || "").localeCompare(a.transactionTime || "");
+        if (t !== 0) return t;
+        return (b.createdAt || "").localeCompare(a.createdAt || "");
+      }
+      if (sortBy === "date_asc") {
+        const d = (a.transactionDate || "").localeCompare(b.transactionDate || "");
+        if (d !== 0) return d;
+        const t = (a.transactionTime || "").localeCompare(b.transactionTime || "");
+        if (t !== 0) return t;
+        return (a.createdAt || "").localeCompare(b.createdAt || "");
+      }
       if (sortBy === "amount_desc") return b.amount - a.amount;
       if (sortBy === "amount_asc") return a.amount - b.amount;
       return 0;

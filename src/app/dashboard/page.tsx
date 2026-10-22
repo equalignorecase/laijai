@@ -30,6 +30,8 @@ import {
   Sparkles,
   X,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -200,15 +202,29 @@ export default function DashboardPage() {
     }
   };
 
-  // Compute matched transactions within the current budget period
+  // Compute matched transactions within the current budget period (sorted by date desc -> time desc -> createdAt desc)
   const matchedTransactions = useMemo(() => {
-    if (!budget?.startDate || !budget?.endDate) return allTransactions;
-    const start = budget.startDate;
-    const end = budget.endDate;
-    return allTransactions.filter((tx) => {
-      const txDate = (tx.transactionDate || "").slice(0, 10);
-      if (!txDate) return false;
-      return txDate >= start && txDate <= end;
+    let list = allTransactions;
+    if (budget?.startDate && budget?.endDate) {
+      const start = budget.startDate;
+      const end = budget.endDate;
+      list = allTransactions.filter((tx) => {
+        const txDate = (tx.transactionDate || "").slice(0, 10);
+        if (!txDate) return false;
+        return txDate >= start && txDate <= end;
+      });
+    }
+
+    return [...list].sort((a, b) => {
+      const dateA = a.transactionDate || "";
+      const dateB = b.transactionDate || "";
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
+
+      const timeA = a.transactionTime || "";
+      const timeB = b.transactionTime || "";
+      if (timeA !== timeB) return timeB.localeCompare(timeA);
+
+      return (b.createdAt || "").localeCompare(a.createdAt || "");
     });
   }, [allTransactions, budget]);
 
@@ -218,6 +234,31 @@ export default function DashboardPage() {
     () => matchedTransactions.reduce((sum, tx) => sum + tx.amount, 0),
     [matchedTransactions]
   );
+  // Calculate today's total spending
+  const todaySpent = useMemo(() => {
+    if (!todayStr) return 0;
+    return allTransactions.reduce((sum, tx) => {
+      const txDate = (tx.transactionDate || "").slice(0, 10);
+      return txDate === todayStr ? sum + tx.amount : sum;
+    }, 0);
+  }, [allTransactions, todayStr]);
+
+  // Dashboard Table Pagination (5 items per page)
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(matchedTransactions.length / itemsPerPage) || 1;
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [totalPages, currentPage]);
+
+  const paginatedTransactions = useMemo(() => {
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    return matchedTransactions.slice(startIdx, startIdx + itemsPerPage);
+  }, [matchedTransactions, currentPage, itemsPerPage]);
+
   const remaining = Math.max(0, budgetAmount - spent);
   const isOverBudget = spent > budgetAmount && budgetAmount > 0;
   const percentageUsed = budgetAmount > 0 ? (spent / budgetAmount) * 100 : 0;
@@ -548,14 +589,14 @@ export default function DashboardPage() {
           {/* 4 Quick Stat Pill Boxes */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 pt-1">
             <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-medium text-slate-500 block">งบที่ตั้งไว้</span>
-              <span className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 block">
-                {formatCurrency(budgetAmount)}
+              <span className="text-[11px] font-medium text-slate-500 block">วันนี้ใช้ไปแล้ว</span>
+              <span className="text-sm sm:text-base font-bold text-amber-600 mt-0.5 block">
+                {formatCurrency(todaySpent)}
               </span>
             </div>
 
             <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-medium text-slate-500 block">ใช้ไปแล้ว</span>
+              <span className="text-[11px] font-medium text-slate-500 block">ใช้ไปแล้ว (รวม)</span>
               <span className="text-sm sm:text-base font-bold text-rose-600 mt-0.5 block">
                 {formatCurrency(spent)}
               </span>
@@ -639,17 +680,25 @@ export default function DashboardPage() {
 
       {/* RECENT TRANSACTIONS IN THIS PERIOD */}
       <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="font-bold text-slate-900 text-base">รายการรายจ่ายในช่วงงบนี้</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              แสดง {matchedTransactions.slice(0, 10).length} รายการล่าสุด (จากทั้งหมด {matchedTransactions.length} รายการ)
+              {matchedTransactions.length > 0 ? (
+                <>
+                  แสดง {(currentPage - 1) * itemsPerPage + 1} -{" "}
+                  {Math.min(currentPage * itemsPerPage, matchedTransactions.length)} จากทั้งหมด{" "}
+                  {matchedTransactions.length} รายการ
+                </>
+              ) : (
+                "ยังไม่มีรายการรายจ่ายในช่วงนี้"
+              )}
             </p>
           </div>
 
           <Link
             href="/transactions"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 self-start sm:self-auto"
           >
             <span>ดูประวัติทั้งหมด</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -674,42 +723,107 @@ export default function DashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {matchedTransactions.slice(0, 10).map((tx) => (
-              <div
-                key={tx.id}
-                className="py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 rounded-xl px-2 transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                    <Receipt className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="font-semibold text-sm text-slate-900 truncate">{tx.title}</h4>
-                    <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
-                      <span>{formatThaiDate(tx.transactionDate, "d MMM yyyy")}</span>
-                      {tx.transactionTime && <span>• {tx.transactionTime} น.</span>}
-                      {tx.recipientName && (
-                        <span className="truncate max-w-[120px] text-slate-400">• ถึง {tx.recipientName}</span>
-                      )}
+          <div className="space-y-3">
+            <div className="divide-y divide-slate-100">
+              {paginatedTransactions.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="py-3 sm:py-3.5 flex items-center justify-between gap-2.5 sm:gap-3 hover:bg-slate-50/80 rounded-2xl px-2 sm:px-3 -mx-2 sm:-mx-3 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100/70">
+                      <Receipt className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                     </div>
+                    <div className="min-w-0">
+                      <h4 className="font-semibold text-xs sm:text-sm text-slate-900 truncate">
+                        {tx.title}
+                      </h4>
+                      <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-slate-500 mt-0.5 flex-wrap">
+                        <span>{formatThaiDate(tx.transactionDate, "d MMM yyyy")}</span>
+                        {tx.transactionTime && <span>• {tx.transactionTime} น.</span>}
+                        {tx.recipientName && (
+                          <span className="truncate max-w-[100px] sm:max-w-[160px] text-slate-400">
+                            • ถึง {tx.recipientName}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 whitespace-nowrap">
+                      -{formatCurrency(tx.amount)}
+                    </span>
+                    <button
+                      onClick={() => setDeleteTarget({ id: tx.id, title: tx.title })}
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer touch-manipulation active:scale-95"
+                      title="ลบรายการ"
+                      aria-label={`ลบรายการ ${tx.title}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
+                {/* Previous Button */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer touch-manipulation active:scale-95"
+                  title="หน้าก่อนหน้า"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline">ก่อนหน้า</span>
+                </button>
+
+                {/* Page Indicator */}
+                <div className="flex items-center gap-1">
+                  {/* Mobile compact indicator */}
+                  <span className="sm:hidden font-medium text-slate-600 text-xs px-2">
+                    หน้า {currentPage} จาก {totalPages}
+                  </span>
+
+                  {/* Desktop page numbered buttons */}
+                  <div className="hidden sm:flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((page) => {
+                      const isActive = page === currentPage;
+                      return (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => setCurrentPage(page)}
+                          className={`w-8 h-8 rounded-xl font-semibold text-xs flex items-center justify-center transition-all cursor-pointer ${
+                            isActive
+                              ? "bg-blue-600 text-white shadow-2xs"
+                              : "text-slate-600 hover:bg-slate-100"
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="font-bold text-sm text-slate-900 whitespace-nowrap">
-                    -{formatCurrency(tx.amount)}
-                  </span>
-                  <button
-                    onClick={() => setDeleteTarget({ id: tx.id, title: tx.title })}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                    title="ลบรายการ"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {/* Next Button */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer touch-manipulation active:scale-95"
+                  title="หน้าถัดไป"
+                >
+                  <span className="hidden sm:inline">ถัดไป</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>

@@ -136,8 +136,18 @@ export async function getTransactions(
       };
     });
 
-    // Sort by date desc in-memory (safer than Firestore orderBy which drops documents missing field)
-    list.sort((a, b) => (b.transactionDate || "").localeCompare(a.transactionDate || ""));
+    // Sort by date desc -> time desc -> createdAt desc in-memory
+    list.sort((a, b) => {
+      const dateA = a.transactionDate || "";
+      const dateB = b.transactionDate || "";
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
+
+      const timeA = a.transactionTime || "";
+      const timeB = b.transactionTime || "";
+      if (timeA !== timeB) return timeB.localeCompare(timeA);
+
+      return (b.createdAt || "").localeCompare(a.createdAt || "");
+    });
 
     // In-memory filter for flexible multi-criteria without requiring 10+ composite indexes
     if (options?.month) {
