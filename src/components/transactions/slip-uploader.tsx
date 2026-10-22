@@ -9,9 +9,11 @@ interface SlipUploaderProps {
   categories: Category[];
   onParsed: (result: SlipParseResult, engine: "tesseract" | "gemini") => void;
   disabled?: boolean;
+  resetKey?: number | string;
+  onClear?: () => void;
 }
 
-export function SlipUploader({ categories, onParsed, disabled }: SlipUploaderProps) {
+export function SlipUploader({ categories, onParsed, disabled, resetKey, onClear }: SlipUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -23,6 +25,22 @@ export function SlipUploader({ categories, onParsed, disabled }: SlipUploaderPro
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Programmatic reset when resetKey changes
+  React.useEffect(() => {
+    if (resetKey !== undefined && resetKey !== 0) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setSelectedFile(null);
+      setPreviewUrl(null);
+      setErrorMsg(null);
+      setSuccessMsg(null);
+      setLastEngineUsed(null);
+      setIsAnalyzing(false);
+      setProgressPercent(0);
+      setProgressStatus("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [resetKey]);
 
   const handleFile = async (file: File) => {
     if (!file) return;
@@ -125,6 +143,7 @@ export function SlipUploader({ categories, onParsed, disabled }: SlipUploaderPro
     setSuccessMsg(null);
     setLastEngineUsed(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    onClear?.();
   };
 
   return (

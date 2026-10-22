@@ -19,6 +19,9 @@ import {
   AlertTriangle,
   Sparkles,
   Cpu,
+  RotateCcw,
+  ArrowRight,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -47,7 +50,8 @@ export default function RecordExpensePage() {
     title?: string;
     categoryId?: string;
   }>({});
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [uploaderResetKey, setUploaderResetKey] = useState(0);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   // Duplicate check modal state
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
@@ -73,6 +77,39 @@ export default function RecordExpensePage() {
       setTransactionTime(format(new Date(), "HH:mm"));
     }
   }, [availableCategories, categoryId, transactionDate, transactionTime]);
+
+  // Auto-dismiss success notification
+  React.useEffect(() => {
+    if (successNotice) {
+      const timer = setTimeout(() => {
+        setSuccessNotice(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [successNotice]);
+
+  // Reset form and slip completely
+  const resetForm = () => {
+    setAmount("");
+    setTitle("");
+    setDescription("");
+    setRecipientName("");
+    setSenderName("");
+    setBankName("");
+    setReferenceNumber("");
+    setSource("manual");
+    setOcrEngine(null);
+    setFieldErrors({});
+    setFormError(null);
+    setAiConfidenceWarning([]);
+    setTransactionDate(getCurrentDateStr());
+    setTransactionTime(format(new Date(), "HH:mm"));
+    if (availableCategories.length > 0) {
+      setCategoryId(availableCategories[0].id);
+    }
+    // Increment resetKey to trigger SlipUploader cleanup
+    setUploaderResetKey((prev) => prev + 1);
+  };
 
   // Handle OCR Result from Tesseract or Gemini
   const handleSlipParsed = (result: SlipParseResult, engine: "tesseract" | "gemini") => {
@@ -189,12 +226,14 @@ export default function RecordExpensePage() {
         duplicateStatus: forceBypassDuplicate ? "possible_duplicate" : "unique",
       });
 
-      // 3. Success state & navigation to dashboard
-      setSaveSuccess(true);
-      setTimeout(() => {
-        router.refresh();
-        router.push("/dashboard");
-      }, 500);
+      // 3. Reset form & slip immediately so user can upload next slip continuously
+      resetForm();
+      setSuccessNotice("บันทึกรายการสำเร็จแล้ว! พร้อมสำหรับสลิปใบถัดไป");
+      setIsSubmitting(false);
+
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     } catch (err: unknown) {
       console.error("Save transaction error:", err);
       const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการบันทึกข้อมูล";
@@ -205,6 +244,33 @@ export default function RecordExpensePage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {/* Success Notification Banner */}
+      {successNotice && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="text-xs sm:text-sm font-semibold">{successNotice}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
+            >
+              <span>ไปดูแดชบอร์ด</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setSuccessNotice(null)}
+              className="p-1.5 hover:bg-emerald-100 text-emerald-600 rounded-lg transition-colors cursor-pointer"
+              title="ปิดการแจ้งเตือน"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -248,7 +314,15 @@ export default function RecordExpensePage() {
       <SlipUploader
         categories={categories}
         onParsed={handleSlipParsed}
-        disabled={isSubmitting || saveSuccess}
+        disabled={isSubmitting}
+        resetKey={uploaderResetKey}
+        onClear={() => {
+          if (source === "receipt_ai") {
+            setSource("manual");
+            setOcrEngine(null);
+            setAiConfidenceWarning([]);
+          }
+        }}
       />
 
       {/* AI Warnings if any */}
@@ -275,13 +349,6 @@ export default function RecordExpensePage() {
         }}
         className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-6"
       >
-        {/* Success Banner */}
-        {saveSuccess && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 font-semibold flex items-center gap-2.5 animate-in fade-in">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span>บันทึกรายจ่ายสำเร็จเรียบร้อย! กำลังนำคุณไปยังแดชบอร์ดภาพรวม...</span>
-          </div>
-        )}
 
         {/* 1. จำนวนเงิน & 2. ชื่อรายการ */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -420,26 +487,33 @@ export default function RecordExpensePage() {
 
         {/* Submit Actions */}
         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={resetForm}
+            disabled={isSubmitting}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+            title="ล้างข้อมูลและรูปสลิปทั้งหมด"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>ล้างข้อมูล</span>
+          </button>
+
           <Link
             href="/dashboard"
             className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors text-center"
           >
             ดูแดชบอร์ด
           </Link>
+
           <button
             type="submit"
-            disabled={isSubmitting || saveSuccess}
+            disabled={isSubmitting}
             className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-sm shadow-blue-600/30 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
                 <span>กำลังบันทึก...</span>
-              </>
-            ) : saveSuccess ? (
-              <>
-                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                <span>บันทึกสำเร็จ!</span>
               </>
             ) : (
               <>
